@@ -29,7 +29,6 @@ export function HierarchySidebar() {
   const searchParams = useSearchParams();
   const activeLabId = searchParams.get("lab");
   const activeProjectId = searchParams.get("project");
-  const activeSessionId = searchParams.get("session");
   const [tree, setTree] = useState<LabNode[]>([]);
   const [openLabIds, setOpenLabIds] = useState<Set<string>>(new Set());
   const [openProjectIds, setOpenProjectIds] = useState<Set<string>>(new Set());
@@ -95,7 +94,7 @@ export function HierarchySidebar() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     loadTree();
-  }, [loadTree, activeLabId, activeProjectId, activeSessionId]);
+  }, [loadTree, activeLabId, activeProjectId]);
 
   useDataChangedListener(loadTree);
 
@@ -117,7 +116,7 @@ export function HierarchySidebar() {
       description: values.description || null,
     });
     emitDataChanged();
-    router.push(workspaceHref(lab.id));
+    router.push(projectWorkspaceHref(lab.id));
   }
 
   return (
@@ -173,7 +172,7 @@ export function HierarchySidebar() {
                   />
                 </button>
                 <Link
-                  href={workspaceHref(lab.id)}
+                  href={projectWorkspaceHref(lab.id)}
                   className={cn(
                     "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
                     isActiveLab && !activeProjectId && "bg-accent font-medium",
@@ -209,10 +208,10 @@ export function HierarchySidebar() {
                             />
                           </button>
                           <Link
-                            href={workspaceHref(lab.id, project.id)}
+                            href={projectWorkspaceHref(lab.id, project.id)}
                             className={cn(
                               "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-                              isActiveProject && !activeSessionId && "bg-accent font-medium",
+                              isActiveProject && "bg-accent font-medium",
                             )}
                           >
                             <FolderKanban className="h-4 w-4 shrink-0" />
@@ -223,17 +222,13 @@ export function HierarchySidebar() {
                         {isProjectOpen && (
                           <div className="ml-3 space-y-1 border-l pl-3">
                             {project.sessions.map((session) => (
-                              <Link
+                              <div
                                 key={session.id}
-                                href={workspaceHref(lab.id, project.id, session.id)}
-                                className={cn(
-                                  "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-                                  activeSessionId === session.id && "bg-accent font-medium",
-                                )}
+                                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
                               >
                                 <Rows3 className="h-4 w-4 shrink-0" />
                                 <span className="truncate">{session.title}</span>
-                              </Link>
+                              </div>
                             ))}
                             {project.sessions.length === 0 && (
                               <p className="px-2 py-1 text-xs text-muted-foreground">
@@ -271,10 +266,9 @@ export function HierarchySidebar() {
   );
 }
 
-function workspaceHref(labId: string, projectId?: string, sessionId?: string): string {
+function projectWorkspaceHref(labId: string, projectId?: string): string {
   const params = new URLSearchParams({ lab: labId });
   if (projectId) params.set("project", projectId);
-  if (sessionId) params.set("session", sessionId);
   return `/dashboard/labs?${params.toString()}`;
 }
 

@@ -98,6 +98,19 @@ export interface Lab {
   role: LabRole | null;
 }
 
+export interface LabMembership {
+  id: string;
+  laboratory_id: string;
+  user_id: string;
+  role: LabRole;
+  invited_by: string | null;
+  email: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Project {
   id: string;
   laboratory_id: string;
@@ -129,6 +142,10 @@ export function fetchLabs(token: string): Promise<Lab[]> {
   return apiFetch<Lab[]>("/api/v1/labs", { token });
 }
 
+export function fetchLab(token: string, labId: string): Promise<Lab> {
+  return apiFetch<Lab>(`/api/v1/labs/${labId}`, { token });
+}
+
 export function createLab(
   token: string,
   data: { name: string; description?: string | null },
@@ -142,6 +159,10 @@ export function createLab(
 
 export function fetchProjects(token: string, labId: string): Promise<Project[]> {
   return apiFetch<Project[]>(`/api/v1/labs/${labId}/projects`, { token });
+}
+
+export function fetchProject(token: string, projectId: string): Promise<Project> {
+  return apiFetch<Project>(`/api/v1/projects/${projectId}`, { token });
 }
 
 export function createProject(
@@ -158,6 +179,10 @@ export function createProject(
 
 export function fetchSessions(token: string, projectId: string): Promise<DesignSession[]> {
   return apiFetch<DesignSession[]>(`/api/v1/projects/${projectId}/sessions`, { token });
+}
+
+export function fetchSession(token: string, sessionId: string): Promise<DesignSession> {
+  return apiFetch<DesignSession>(`/api/v1/sessions/${sessionId}`, { token });
 }
 
 export function createSession(
@@ -187,6 +212,46 @@ export function updateLab(
 
 export function deleteLab(token: string, labId: string): Promise<void> {
   return apiFetch<void>(`/api/v1/labs/${labId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function fetchLabMembers(token: string, labId: string): Promise<LabMembership[]> {
+  return apiFetch<LabMembership[]>(`/api/v1/labs/${labId}/members`, { token });
+}
+
+export function addLabMember(
+  token: string,
+  labId: string,
+  data: { email: string; role: LabRole },
+): Promise<LabMembership> {
+  return apiFetch<LabMembership>(`/api/v1/labs/${labId}/members`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateLabMember(
+  token: string,
+  labId: string,
+  membershipId: string,
+  data: { role: LabRole },
+): Promise<LabMembership> {
+  return apiFetch<LabMembership>(`/api/v1/labs/${labId}/members/${membershipId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function removeLabMember(
+  token: string,
+  labId: string,
+  membershipId: string,
+): Promise<void> {
+  return apiFetch<void>(`/api/v1/labs/${labId}/members/${membershipId}`, {
     method: "DELETE",
     token,
   });

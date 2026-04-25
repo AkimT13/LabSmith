@@ -264,7 +264,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
   - Create or select a project
   - Expand the selected project in the left sidebar
   - Confirm the Sessions panel names that project
-  - Select a session from the sidebar or session list and confirm the URL includes `session=...`
+  - Confirm sessions appear under the selected project without changing the project workspace URL
   - Refresh and confirm context restores sensibly
 - Verification:
   - `npm --prefix frontend run lint`
@@ -298,22 +298,33 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
   - Delete a session/project/lab → confirmation dialog appears, then item disappears
 - Verified: `npm --prefix frontend run lint`, `npm --prefix frontend run build`, `npm run backend:test` (20 tests).
 
-#### M2.3 — Member Management UI
+#### M2.3 — Member Management UI — COMPLETE
 - Goal: make the existing lab member APIs usable from the dashboard.
-- Changes:
-  - List lab members for selected lab
-  - Add an existing user by email
-  - Change member role
-  - Remove member
-  - Surface last-owner protection cleanly
+- Changes shipped:
+  - Added typed frontend member APIs in `frontend/src/lib/api.ts`: `fetchLabMembers`, `addLabMember`, `updateLabMember`, `removeLabMember`.
+  - Added a **Lab settings** dialog in `/dashboard/labs`.
+  - Member management now lives in Lab settings instead of the primary working view.
+  - The settings dialog lists lab members with avatar, name/email, and role.
+  - Admin users can add an existing user by email.
+  - Admin users can change member roles from the list.
+  - Admin users can remove members via confirmation dialog.
+  - Last-owner protection is surfaced through existing backend errors in the role-change/remove flows.
+  - UI role labels now match the lab operating model:
+    - `admin`/`owner` -> **Admin**: PI, Post-Docs
+    - `member` -> **Supervisor**: senior lab members
+    - `viewer` -> **User**: visiting researchers, general lab members
+  - `owner` remains an internal ownership safeguard, not a separate day-to-day lab role.
+  - The dashboard primary view is now project-oriented: the lab is treated as the workspace boundary, while the main page leads with selected-project context and project/session work.
+  - Added M2.4 prep APIs in `frontend/src/lib/api.ts`: `fetchLab`, `fetchProject`, `fetchSession`.
+  - Removed session-as-query-param state from the project workspace; URLs now stop at `lab` and `project` until the dedicated session page lands.
+  - Sidebar session rows remain visible for context but are no longer links until M2.4 creates `/dashboard/sessions/[sessionId]`.
 - User test:
-  - Open selected lab members area
-  - Confirm current user appears as `owner`
+  - Open **Lab settings** from the selected lab workspace header
+  - Confirm current user appears as `Admin`
   - Try demoting/removing the only owner and confirm the UI shows the backend error
   - If another test user exists, add them by email and change/remove role
+  - Close settings and confirm the primary view returns to projects/sessions
 - Verification:
-  - Add frontend API methods for members
-  - Add backend permission edge-case tests if needed
   - `npm --prefix frontend run lint`
   - `npm --prefix frontend run build`
   - `npm run backend:test`
