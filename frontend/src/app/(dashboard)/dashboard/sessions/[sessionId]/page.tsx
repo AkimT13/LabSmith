@@ -2,16 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { ArrowLeft, FolderKanban, FlaskConical, MessageSquare, Rows3 } from "lucide-react";
+import { ArrowLeft, Box, FolderKanban, FlaskConical, Rows3 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { ArtifactList } from "@/components/sessions/artifact-list";
+import { ChatPanel } from "@/components/sessions/chat-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  fetchArtifacts,
   fetchLab,
   fetchProject,
   fetchSession,
+  type Artifact,
   type DesignSession,
   type Lab,
   type Project,
@@ -25,6 +29,9 @@ export default function SessionDetailPage() {
   const [session, setSession] = useState<DesignSession | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [lab, setLab] = useState<Lab | null>(null);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [artifactsError, setArtifactsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,12 +58,43 @@ export default function SessionDetailPage() {
     }
   }, [getToken, isLoaded, isSignedIn, sessionId]);
 
+  const loadArtifacts = useCallback(async () => {
+    if (!isLoaded || !isSignedIn || !sessionId) return;
+
+    setArtifactsLoading(true);
+    setArtifactsError(null);
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        setArtifactsError("No Clerk session token. Sign out and sign back in.");
+        return;
+      }
+
+      setArtifacts(await fetchArtifacts(token, sessionId));
+    } catch (err) {
+      setArtifactsError(err instanceof Error ? err.message : "Failed to load artifacts");
+    } finally {
+      setArtifactsLoading(false);
+    }
+  }, [getToken, isLoaded, isSignedIn, sessionId]);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     load();
   }, [load]);
 
-  useDataChangedListener(load);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
+    loadArtifacts();
+  }, [loadArtifacts]);
+
+  const reloadSessionData = useCallback(() => {
+    void load();
+    void loadArtifacts();
+  }, [load, loadArtifacts]);
+
+  useDataChangedListener(reloadSessionData);
 
   if (loading) {
     return (
@@ -177,20 +215,37 @@ export default function SessionDetailPage() {
         </Card>
       </div>
 
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MessageSquare className="h-4 w-4" />
-            Chat-based design (coming in M3)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            This page will host the chat panel, spec cards, validation badges, and the in-browser
-            3D viewer. M3 will wire up SSE streaming and message persistence here.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
+        <ChatPanel
+          sessionId={session.id}
+          disabled={session.status === "archived"}
+          disabledReason="Archived sessions are read-only."
+          onArtifactGenerated={loadArtifacts}
+        />
+
+        <div className="space-y-4">
+          <ArtifactList
+            artifacts={artifacts}
+            loading={artifactsLoading}
+            error={artifactsError}
+            onRefresh={loadArtifacts}
+          />
+
+          <Card className="min-h-[360px]">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Box className="h-4 w-4" />
+                Viewer
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex min-h-[260px] items-center justify-center rounded-md border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+                3D preview loads here in M4.
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
