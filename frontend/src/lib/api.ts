@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+const API_BASE_URL = configuredApiBaseUrl || "http://localhost:8000";
 
 export class ApiError extends Error {
   constructor(
@@ -25,17 +26,49 @@ export async function apiFetch<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     ...fetchOptions,
     headers,
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new ApiError(response.status, text);
+    throw new ApiError(response.status, await readErrorMessage(response));
   }
 
   return response.json();
+}
+
+function buildApiUrl(path: string): string {
+  if (!/^https?:\/\//.test(API_BASE_URL)) {
+    throw new ApiError(
+      0,
+      `Invalid NEXT_PUBLIC_API_BASE_URL: "${API_BASE_URL}". Expected a full http:// or https:// URL.`,
+    );
+  }
+
+  const baseUrl = API_BASE_URL.replace(/\/$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    const body = (await response.json()) as { detail?: unknown; message?: unknown };
+    const detail = body.detail ?? body.message;
+    return typeof detail === "string" ? detail : `API request failed with ${response.status}`;
+  }
+
+  const text = await response.text();
+  if (/^\s*<!doctype html/i.test(text) || /^\s*<html/i.test(text)) {
+    return (
+      `API request returned HTML with status ${response.status}. ` +
+      "Check that NEXT_PUBLIC_API_BASE_URL points to the FastAPI backend."
+    );
+  }
+
+  return text || `API request failed with ${response.status}`;
 }
 
 // Types

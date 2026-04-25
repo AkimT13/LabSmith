@@ -8,6 +8,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.pyre/
+.pytype/
 .venv/
 venv/
 build/
@@ -18,8 +27,12 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/.next/
+.turbo/
+.vercel/
 !.env.local.example
 
 backend/generated/
 .claude/
 claude.md
+
+*.log

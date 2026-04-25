@@ -13,7 +13,9 @@
 - Config via `pydantic-settings` in `app/config.py` — reads from `backend/.env` with `LABSMITH_` prefix
 
 #### Database (PostgreSQL + SQLAlchemy async + Alembic)
-- PostgreSQL 16 via Homebrew, user `labsmith`, database `labsmith`
+- PostgreSQL 16 local dev database, user `labsmith`, database `labsmith`
+- Verified Docker path: container `labsmith-postgres` exposes `localhost:5432` using the same credentials as `backend/.env.example`
+- Homebrew PostgreSQL is also valid if the service is installed, running, and has the expected role/database
 - Async SQLAlchemy engine in `app/database.py`
 - **7 ORM models** in `app/models/`:
   - `User` (synced from Clerk — clerk_user_id, email, display_name, avatar_url)
@@ -37,17 +39,25 @@
 #### Frontend (Next.js 16 + Clerk + shadcn/ui)
 - Replaced Vite SPA with Next.js 16 + TypeScript + Tailwind CSS v4 + App Router
 - `@clerk/nextjs` for auth — middleware protects all routes except `/`, `/sign-in`, `/sign-up`
+- Removed `next/font/google` usage so production builds do not require fetching Google Fonts; the app now uses a system font stack
 - **Pages**:
   - `/` — Landing page (redirects to dashboard if signed in)
   - `/sign-in`, `/sign-up` — Clerk components
   - `/dashboard/labs` — Authenticated dashboard with user profile card
 - **Dashboard layout**: sidebar (nav) + topbar (UserButton) + main content area
-- **API client** (`src/lib/api.ts`): `apiFetch<T>()` with Clerk token injection
+- **API client** (`src/lib/api.ts`): `apiFetch<T>()` with Clerk token injection, API base URL validation, and readable errors when a request accidentally returns HTML
 - **shadcn/ui components**: Button, Card, Avatar, Separator
 
 #### Tests
 - **17 tests passing** — 13 original CAD pipeline tests + 4 new app tests
 - `test_app.py` verifies legacy routes work through new main.py and auth returns 401 without token
+- Frontend checks verified with `npm --prefix frontend run lint` and `npm --prefix frontend run build`
+
+#### Repo Hygiene
+- Root `.gitignore` covers Python caches, coverage output, local env files, virtualenvs, `node_modules`, Next/Vite build output, Turbo/Vercel caches, generated CAD output, Claude local files, and logs
+- `backend/.env` and `frontend/.env.local` are intentionally ignored
+- `backend/.env.example` and `frontend/.env.local.example` are safe templates and should stay tracked
+- `frontend/dist/` may exist from the earlier Vite scaffold but is ignored and should not be committed
 
 ### File Structure
 
@@ -101,7 +111,7 @@ frontend/
       api.ts             # API client with token injection
       utils.ts           # cn() for tailwind class merging
     app/
-      layout.tsx          # ClerkProvider + fonts
+      layout.tsx          # ClerkProvider + root shell
       page.tsx            # Landing page
       globals.css         # Tailwind + shadcn theme variables
       sign-in/[[...sign-in]]/page.tsx
@@ -121,11 +131,19 @@ package.json              # npm workspaces, run scripts
 ### How to Run
 
 ```bash
-# 1. Start PostgreSQL
-brew services start postgresql@16
+# 1. Start PostgreSQL with Docker
+docker start labsmith-postgres
+
+# If the container does not exist yet:
+docker run --name labsmith-postgres \
+  -e POSTGRES_USER=labsmith \
+  -e POSTGRES_PASSWORD=labsmith \
+  -e POSTGRES_DB=labsmith \
+  -p 5432:5432 \
+  -d postgres:16
 
 # 2. Run migration (first time only)
-cd backend && python3 -m alembic upgrade head && cd ..
+npm run backend:migrate
 
 # 3. Start backend (port 8000)
 npm run backend:dev
@@ -137,6 +155,14 @@ npm run frontend:dev
 npm run backend:test
 ```
 
+Homebrew PostgreSQL can be used instead of Docker:
+
+```bash
+brew services start postgresql@16
+```
+
+If migrations fail with `Connect call failed ('::1', 5432)` or `Connect call failed ('127.0.0.1', 5432)`, Postgres is not listening on `localhost:5432` or the configured database is unavailable.
+
 ### Environment Setup
 
 **backend/.env** requires:
@@ -144,6 +170,7 @@ npm run backend:test
 LABSMITH_DATABASE_URL=postgresql+asyncpg://labsmith:labsmith@localhost:5432/labsmith
 LABSMITH_CLERK_SECRET_KEY=sk_test_...
 LABSMITH_CLERK_PUBLISHABLE_KEY=pk_test_...
+LABSMITH_CLERK_WEBHOOK_SECRET=whsec_...
 LABSMITH_CLERK_JWKS_URL=https://<instance>.clerk.accounts.dev/.well-known/jwks.json
 ```
 
@@ -151,8 +178,12 @@ LABSMITH_CLERK_JWKS_URL=https://<instance>.clerk.accounts.dev/.well-known/jwks.j
 ```
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
+
+`NEXT_PUBLIC_API_BASE_URL` must be exactly a full URL such as `http://localhost:8000`. A malformed value can cause the browser to call the Next.js app instead of FastAPI and render a raw HTML 404 in the dashboard.
 
 ---
 
