@@ -3,14 +3,17 @@
 Produces an async stream of SSE-shaped event dicts. The router is responsible for
 encoding them as `event: <type>\\ndata: <json>\\n\\n` and writing to the client.
 
-In mock mode (`settings.chat_mock = True`, default for now), we use the existing
-rule-based parser instead of an LLM and emit fake `generation_complete` events
-without writing real STL bytes. The contract (`docs/M3_CONTRACT.md`) defines the
-event ordering and payload shapes.
+The pipeline is split into pluggable parts:
 
-Replacing the parser with a real LLM later is a small change to `_parse_prompt`
-and the `text_delta` source. Replacing the export with real CadQuery is a small
-change to `_run_generation`. Everything else stays the same.
+- LLM streaming → `app/services/llm.py` (`MockLLMProvider` or `OpenAIProvider`).
+  Selected by `LABSMITH_CHAT_LLM_PROVIDER` (default "mock").
+- Spec extraction → `RuleBasedParser` from `labsmith.parser` (deterministic).
+  Will be swapped for a structured-output LLM call in a later iteration.
+- CAD generation → `_run_generation`. Currently writes a fake artifact row when
+  `settings.chat_mock` is true; M5 will plug in real CadQuery here.
+
+The M3 contract (`docs/M3_CONTRACT.md`) defines event ordering and payload shapes.
+None of the swappable parts above change those guarantees.
 """
 from __future__ import annotations
 
@@ -28,6 +31,7 @@ from app.config import settings
 from app.models.artifact import Artifact, ArtifactType
 from app.models.design_session import DesignSession, SessionStatus
 from app.models.lab_membership import LabRole
+from app.services.llm import get_llm_provider
 from app.models.message import Message, MessageRole
 from app.models.user import User
 from app.services.access import get_session_with_membership
@@ -127,16 +131,17 @@ async def _orchestrate(
     db.add(assistant_msg)
     await db.flush()  # write the placeholder so artifact FKs resolve
 
-    # 2. Stream assistant text. In mock mode, we use a canned response. In a real
-    # implementation this would consume LLM token deltas.
-    assistant_text_chunks = _build_assistant_text_chunks(user_content)
-    for chunk in assistant_text_chunks:
+    # 2. Stream assistant text. The provider abstraction (app/services/llm.py)
+    # decides whether this is the canned mock response or a real OpenAI stream.
+    # Either way, each yielded chunk becomes a `text_delta` event.
+    provider = get_llm_provider()
+    assistant_text_chunks: list[str] = []
+    async for chunk in provider.stream_response(user_content):
+        assistant_text_chunks.append(chunk)
         yield {
             "event": "text_delta",
             "data": {"message_id": str(assistant_message_id), "delta": chunk},
         }
-        if settings.chat_mock:
-            await asyncio.sleep(0.15)  # cosmetic pacing in mock mode
 
     # 3. Parse the prompt into a structured PartRequest. The rule-based parser
     # doesn't need the assistant text — it works directly off user input.
@@ -264,23 +269,10 @@ async def _run_generation(
 
 
 # ---------------------------------------------------------------------------
-# Parser / validator wrappers (will be swapped for LLM later)
+# Spec parsing + validation wrappers (rule-based today; structured-output LLM
+# call in a later iteration). LLM streaming for the assistant reply lives in
+# `app/services/llm.py`.
 # ---------------------------------------------------------------------------
-
-
-def _build_assistant_text_chunks(user_content: str) -> list[str]:
-    """Build the assistant's reply text, split into deltas for streaming.
-
-    In mock mode this is canned. When a real LLM is wired up, this will be a
-    streaming generator yielding token deltas.
-    """
-    response = (
-        f"Here's what I extracted from your prompt: \"{user_content[:80]}\". "
-        f"Parsing the parameters now and running validation. "
-    )
-    # Split into ~5 chunks for a visible streaming effect.
-    chunk_size = max(1, len(response) // 5)
-    return [response[i : i + chunk_size] for i in range(0, len(response), chunk_size)]
 
 
 def _parse_prompt(user_content: str) -> tuple[Any | None, str | None]:

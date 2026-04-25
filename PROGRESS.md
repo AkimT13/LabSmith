@@ -425,11 +425,51 @@ Full backend suite: **25 tests passing** (20 existing + 5 new).
 - `GET /api/v1/sessions/{id}/artifacts` → artifact list (real rows, fake byte counts)
 - Auth + lab-membership rules unchanged — the existing Clerk Bearer token works on every endpoint
 
+### M3 backend — LLM provider abstraction (Day-1.5, this branch) — DONE
+
+Lays the seam for real OpenAI streaming without changing the M3 contract. Mock is still the default, so the frontend agent can keep developing against the same canned response while we work on the real-LLM path in parallel.
+
+#### What shipped
+- New module `backend/app/services/llm.py` with:
+  - `LLMProvider` protocol — single method, `stream_response(user_content) -> AsyncIterator[str]`.
+  - `MockLLMProvider` — exact same canned response the chat service used inline before this refactor (5 chunks, 0.15s pacing). Tests are unaffected.
+  - `OpenAIProvider` — lazy-imports the `openai` SDK so installs without that extra dep aren't slowed at import time. Streams Chat Completions chunks. Raises a clear `ValueError` if no API key is configured.
+  - `get_llm_provider()` factory — reads `LABSMITH_CHAT_LLM_PROVIDER` (default `"mock"`), falls back to mock for unknown values with a warning log.
+- `app/services/chat.py` no longer builds the assistant text inline — it just iterates `provider.stream_response(...)` and emits each yielded chunk as a `text_delta` event. SSE event ordering, payload shapes, and persistence are byte-for-byte identical to before.
+- New config in `app/config.py`:
+  - `chat_llm_provider: str = "mock"` — provider selector.
+  - `openai_api_key: str = ""`, `openai_model: str = "gpt-4o-mini"` — only consulted when provider is `"openai"`.
+  - `openai_system_prompt: str` — instructs the model to keep replies conversational and NOT to extract numeric parameters (the deterministic parser handles that, so we don't end up with two sources of truth).
+- `backend/.env.example` updated with all three new vars and a comment pointing at `pip install -e '.[llm]'`.
+
+#### Tests
+`backend/tests/test_llm_provider.py` adds 4 tests:
+1. Factory returns mock when configured.
+2. Factory falls back to mock for unknown provider strings.
+3. Mock provider yields non-empty chunks that include the user prompt.
+4. OpenAI provider rejects an empty API key fast (no slow-network surprise).
+
+No real OpenAI calls in tests — that would need a key and cost money. The chat-API tests still use mock mode, so they remain deterministic.
+
+Full backend suite: **29 tests passing** (25 → 29, +4 LLM provider).
+
+#### How to enable the real LLM
+1. `pip install -e '.[llm]'` (installs the `openai` package)
+2. Set in `backend/.env`:
+   ```
+   LABSMITH_CHAT_LLM_PROVIDER=openai
+   LABSMITH_OPENAI_API_KEY=sk-...
+   LABSMITH_OPENAI_MODEL=gpt-4o-mini   # optional override
+   ```
+3. Restart the backend. No code changes needed.
+
+The mock path is still always available — set `LABSMITH_CHAT_LLM_PROVIDER=mock` (or just unset) to flip back instantly.
+
 #### Open work for M3 backend (still to come on this branch or later)
-- Replace `_build_assistant_text_chunks` with a real LLM call (OpenAI or similar). Public surface stays the same — it's still an iterator yielding `text_delta` payloads.
 - Replace `_run_generation` with real CadQuery export when M5 lands. Until then, artifacts have `file_path=None`.
 - Wire up rate limiting on `/chat`. Stubbed for now.
 - Heartbeat (`:keepalive`) in long pauses — contract says SHOULD; not yet emitted because mock mode is fast enough that no proxy timeout is plausible. Add when LLM streams introduce real latency.
+- Optional later: structured-output LLM call to replace the rule-based parser (would let the LLM do parameter extraction directly, instead of running both side-by-side).
 
 ### Subsequent Milestones
 - **M4**: 3D preview + file downloads (React Three Fiber STL viewer; fills in `download` + `preview` route bodies)
