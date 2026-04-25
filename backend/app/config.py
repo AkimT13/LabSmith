@@ -32,5 +32,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # Chat / M3
+    chat_mock: bool = True
+    """When true, /sessions/{id}/chat emits scripted SSE events instead of calling
+    a real LLM or CAD pipeline. Default true until M3 wires up real LLM and M5 wires
+    up real CadQuery export."""
+
 
 settings = Settings()

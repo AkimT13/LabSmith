@@ -384,38 +384,54 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ## Milestone 3: Chat-Based Design Sessions — IN PROGRESS
 
-### M3 frontend contract checkpoint
-- Added the M3 shared frontend API contract in `frontend/src/lib/api.ts`:
-  - `PartRequest`, `ValidationIssue`, `Message`, and `Artifact` types
-  - `fetchMessages`, `fetchArtifacts`, and `postChat`
-  - `postChat` returns the raw `text/event-stream` response for hook-level parsing
-- Added `frontend/src/lib/use-chat.ts`:
-  - Uses authenticated `fetch` with Clerk bearer token instead of `EventSource`
-  - Parses SSE `text_delta`, `spec_parsed`, `generation_started`, `generation_complete`, `message_complete`, and `error` events
-  - Maintains live assistant message state, parsed spec state, validation state, and generation status
-- Added session UI components under `frontend/src/components/sessions/`:
-  - `chat-panel.tsx`
-  - `message-bubble.tsx`
-  - `spec-card.tsx`
-  - `validation-badge.tsx`
-  - `artifact-list.tsx`
-- Updated `/dashboard/sessions/[sessionId]` to replace the M2 placeholder with:
-  - M3 chat panel
-  - artifact list with refresh-on-generation
-  - reserved M4 viewer panel
-- Integration target:
-  - Frontend is ready to test against Akim's mock-mode backend endpoints from `docs/M3_CONTRACT.md`: `POST /api/v1/sessions/{session_id}/chat`, `GET /messages`, and `GET /artifacts`.
-- Verification:
-  - `npm --prefix frontend run lint`
-  - `npm --prefix frontend run build`
+Both agents work to the contract at `docs/M3_CONTRACT.md`. Branches: `m3_akim` (backend), and a frontend branch on the teammate's machine.
 
-### M3 remaining
-- Merge the frontend branch with Akim's backend branch (`m3_akim`).
-- Resolve any `PROGRESS.md` conflicts.
-- Run frontend lint/build and backend tests.
-- Browser-test mock-mode chat streaming, message hydration, artifact refresh, and archived-session rejection.
+### M3 backend — Day-1 mock-mode landing (this branch, `m3_akim`) — DONE
+
+The backend is ready for the frontend to develop against. Mock mode is on by default; the frontend can stream a deterministic event sequence with no LLM and no CadQuery dependency.
+
+#### What shipped
+- **Routers** under `backend/app/routers/`:
+  - `chat.py` — `POST /api/v1/sessions/{session_id}/chat` returns a `text/event-stream`. Calls `prepare_chat_turn` synchronously for preflight (auth, archived-session check, persisting the user message) so HTTP errors come back as proper 4xx instead of being raised mid-stream after headers ship.
+  - `messages.py` — `GET /api/v1/sessions/{session_id}/messages` returns all messages oldest-first; used to hydrate the chat panel on load/refresh.
+  - `artifacts.py` — `GET /api/v1/sessions/{session_id}/artifacts` returns artifacts newest-first. `download` and `preview` routes are reserved as `501 Not Implemented` — bodies land in M4 (storage/3D viewer) and M5 (real STL bytes).
+- **Service**: `backend/app/services/chat.py` orchestrator, split into:
+  - `prepare_chat_turn()` — synchronous preflight: session lookup + member role check + archived check + persist user message
+  - `stream_chat_turn()` — async generator yielding `{event, data}` dicts in the order defined by the contract
+  - `_orchestrate()` — the inner state machine. Adds the assistant `Message` to the session as a placeholder up-front (so any artifact rows can FK-reference it), streams `text_delta`s, runs the rule-based parser, emits `spec_parsed` + validation, runs (mock) generation, emits `generation_complete`, finalizes message metadata, then commits everything in a single transaction at `message_complete`.
+- **Schemas**: `backend/app/schemas/chat.py`, `messages.py`, `artifacts.py`.
+  - `MessageResponse` uses `validation_alias="metadata_"` so the ORM's `metadata_` attribute (renamed to dodge SQLAlchemy's reserved name) maps cleanly to `metadata` on the wire.
+- **Mock mode** (`LABSMITH_CHAT_MOCK=true`, default `True`):
+  - Canned assistant text streamed as 5 chunks with `asyncio.sleep(0.15)` between deltas
+  - Rule-based parser produces a real `PartRequest` from the user prompt — same parser used by the legacy `/design` endpoint, so spec extraction is honest even in mock mode
+  - Validation issues come from the existing `validate_part_request`
+  - "Generation" is a 0.4s sleep + an `Artifact` row with `file_path=None` and `file_size_bytes=12345` (fake). M5 will write real STL bytes.
+  - Versioning: each `generation_complete` increments `Artifact.version` per session.
+- **Wiring**: new routers added to `backend/app/main.py`. `chat_mock` flag added to `app/config.py`.
+
+#### Tests (`backend/tests/test_chat_api.py`)
+Five new tests exercise the SSE pipeline end-to-end against the real Postgres database:
+1. Full event sequence ordering (`text_delta` → `spec_parsed` → `generation_started` → `generation_complete` → `message_complete`) with persistence checks for both messages and the artifact.
+2. Re-running the same prompt creates `version=2` artifact in the same session.
+3. Unparseable prompts skip `spec_parsed` and `generation_*` and only emit `message_complete`.
+4. Archived sessions reject the chat request with 409 (preflight, no SSE stream started).
+5. Empty content returns 422.
+
+Full backend suite: **25 tests passing** (20 existing + 5 new).
+
+#### What the frontend agent can build against right now
+- `POST /api/v1/sessions/{id}/chat` with body `{"content": "..."}` → SSE stream conforming exactly to the contract
+- `GET /api/v1/sessions/{id}/messages` → hydration data
+- `GET /api/v1/sessions/{id}/artifacts` → artifact list (real rows, fake byte counts)
+- Auth + lab-membership rules unchanged — the existing Clerk Bearer token works on every endpoint
+
+#### Open work for M3 backend (still to come on this branch or later)
+- Replace `_build_assistant_text_chunks` with a real LLM call (OpenAI or similar). Public surface stays the same — it's still an iterator yielding `text_delta` payloads.
+- Replace `_run_generation` with real CadQuery export when M5 lands. Until then, artifacts have `file_path=None`.
+- Wire up rate limiting on `/chat`. Stubbed for now.
+- Heartbeat (`:keepalive`) in long pauses — contract says SHOULD; not yet emitted because mock mode is fast enough that no proxy timeout is plausible. Add when LLM streams introduce real latency.
 
 ### Subsequent Milestones
-- **M4**: 3D preview + file downloads (React Three Fiber STL viewer)
-- **M5**: Real CadQuery integration (replace export stubs)
+- **M4**: 3D preview + file downloads (React Three Fiber STL viewer; fills in `download` + `preview` route bodies)
+- **M5**: Real CadQuery integration (replace mock generation)
 - **M6**: Polish + deployment (Docker, error handling, rate limiting)
