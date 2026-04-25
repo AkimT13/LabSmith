@@ -403,14 +403,19 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
   - M3 chat panel
   - artifact list with refresh-on-generation
   - reserved M4 viewer panel
-- Current integration dependency:
-  - Runtime chat needs the backend M3 endpoints from `docs/M3_CONTRACT.md`, especially mock-mode `POST /api/v1/sessions/{session_id}/chat`, `GET /messages`, and `GET /artifacts`.
+- Integration target:
+  - Frontend is ready to test against Akim's mock-mode backend endpoints from `docs/M3_CONTRACT.md`: `POST /api/v1/sessions/{session_id}/chat`, `GET /messages`, and `GET /artifacts`.
 - Verification:
   - `npm --prefix frontend run lint`
   - `npm --prefix frontend run build`
 
+### M3 remaining
+- Merge the frontend branch with Akim's backend branch (`m3_akim`).
+- Resolve any `PROGRESS.md` conflicts.
+- Run frontend lint/build and backend tests.
+- Browser-test mock-mode chat streaming, message hydration, artifact refresh, and archived-session rejection.
+
 ### Subsequent Milestones
-- **M3 remaining**: Backend chat endpoints, mock stream, message/artifact persistence, and frontend/backend integration pass
 - **M4**: 3D preview + file downloads (React Three Fiber STL viewer)
 - **M5**: Real CadQuery integration (replace export stubs)
 - **M6**: Polish + deployment (Docker, error handling, rate limiting)
