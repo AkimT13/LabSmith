@@ -1,0 +1,44 @@
+from labsmith.models import PartRequest, PartType, ValidationSeverity
+from labsmith.validation import validate_part_request
+
+
+def test_valid_tma_request_has_no_issues() -> None:
+    request = PartRequest(
+        part_type=PartType.TMA_MOLD,
+        rows=8,
+        cols=12,
+        diameter_mm=1.0,
+        spacing_mm=2.0,
+        depth_mm=3.0,
+    )
+
+    assert validate_part_request(request) == []
+
+
+def test_missing_required_parameter_is_error() -> None:
+    request = PartRequest(
+        part_type=PartType.TMA_MOLD,
+        rows=8,
+        cols=12,
+        spacing_mm=2.0,
+        depth_mm=3.0,
+    )
+
+    issues = validate_part_request(request)
+
+    assert issues[0].severity == ValidationSeverity.ERROR
+    assert issues[0].field == "diameter_mm"
+
+
+def test_spacing_below_minimum_is_error() -> None:
+    request = PartRequest(
+        part_type=PartType.TUBE_RACK,
+        rows=4,
+        cols=6,
+        diameter_mm=11.0,
+        spacing_mm=11.2,
+    )
+
+    issues = validate_part_request(request)
+
+    assert any(issue.code == "spacing_too_tight" for issue in issues)

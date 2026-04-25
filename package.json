@@ -1,0 +1,16 @@
+{
+  "name": "labsmith",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "backend:dev": "python3 -m uvicorn labsmith.main:app --app-dir backend/src --host 127.0.0.1 --port 8000",
+    "backend:dev:reload": "python3 -m uvicorn labsmith.main:app --app-dir backend/src --host 127.0.0.1 --port 8000 --reload",
+    "backend:test": "python3 -m pytest backend/tests",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:check": "npm --prefix frontend run check"
+  }
+}

@@ -1,186 +1,107 @@
-# LabForge AI
+# LabSmith
 
-## 🧠 Overview
+LabSmith is a full-stack scaffold for LabForge AI: an autonomous design agent that turns natural-language laboratory hardware requests into structured CAD generation plans.
 
-LabForge AI is an autonomous design agent that converts natural language descriptions of laboratory needs into fabrication-ready CAD models. It enables researchers to rapidly create low-cost lab hardware such as molds, racks, and fixtures without requiring CAD expertise or expensive commercial suppliers.
+The first implementation target is simple, parametric lab hardware such as tube racks, gel electrophoresis combs, and general multi-well molds. The backend owns parsing, validation, CAD template selection, and future STL/STEP export. The frontend owns the interactive TypeScript user experience.
 
-The system bridges a critical gap in the scientific workflow: translating experimental intent into physical tools.
+## Repository layout
 
----
-
-## 🚀 Motivation
-
-Laboratories frequently rely on simple but expensive components (e.g., tissue microarray molds, tube racks, gel combs) that are overpriced due to:
-
-* Low-volume niche demand
-* Lack of automation in design workflows
-* Convenience and validation markups
-
-At the same time, many of these parts are geometrically simple and can be fabricated using accessible tools like 3D printers or silicone casting.
-
-LabForge AI automates the design step, reducing cost, time, and friction in experimental workflows.
-
----
-
-## 🔁 Where This Fits in the Scientific Loop
-
-Traditional loop:
-
-> Hypothesis → Experiment Design → Execution → Analysis
-
-LabForge introduces a missing step:
-
-> Hypothesis → Experiment Design → **Tool Creation** → Execution → Analysis
-
----
-
-## ✨ Features
-
-* 🗣️ Natural language → CAD generation
-* 📐 Parametric design using CadQuery
-* 🧩 Template-based part generation (reliable + extensible)
-* 📦 Export to STL/STEP for fabrication
-* ⚠️ Basic manufacturability validation
-* 🔁 Iterative refinement loop (adjust designs based on feedback)
-
----
-
-## 🧪 Example Inputs
-
-* "Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing"
-* "Design a rack for 1.5 mL tubes that fits in a standard ice bucket"
-* "Make a gel electrophoresis comb with 10 wells"
-
----
-
-## ⚙️ How It Works
-
-### 1. Natural Language Parsing
-
-The system extracts structured parameters from user input:
-
-```json
-{
-  "part": "tma_mold",
-  "rows": 8,
-  "cols": 12,
-  "diameter": 1.0,
-  "spacing": 2.0,
-  "depth": 3.0
-}
+```text
+.
+├── backend/
+│   ├── src/labsmith/
+│   │   ├── export/          # STL/STEP export boundary
+│   │   ├── parser/          # Prompt-to-parameters adapters
+│   │   ├── templates/       # Parametric CAD template registry
+│   │   ├── validation/      # Manufacturability checks
+│   │   ├── main.py          # FastAPI app
+│   │   └── models.py        # API/domain models
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   │   ├── api/             # Typed API client and DTOs
+│   │   ├── components/      # React UI components
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   └── vite.config.ts
+├── package.json             # Root workspace scripts
+└── pyproject.toml           # Python package and tooling config
 ```
 
-### 2. Template Mapping
+## Architecture
 
-The parsed parameters are mapped to predefined parametric CAD templates.
-
-### 3. CAD Generation
-
-CadQuery generates a 3D model based on parameters.
-
-### 4. Validation
-
-Basic checks ensure manufacturability:
-
-* Minimum wall thickness
-* Spacing constraints
-* Printability heuristics
-
-### 5. Export
-
-Outputs fabrication-ready files:
-
-* `.stl` (3D printing)
-* `.step` (CAD/CNC workflows)
-
----
-
-## 🛠️ Tech Stack
-
-* **Language**: Python
-* **CAD Engine**: CadQuery (OpenCascade backend)
-* **AI Layer**: LLM (for parsing + agent logic)
-* **Frontend**: Simple chat interface (web or CLI)
-
----
-
-## 🧩 Architecture
-
-```
-User Input
-   ↓
-LLM Parser → Structured Parameters (JSON)
-   ↓
-Template Selector
-   ↓
-CadQuery Generator
-   ↓
-Validation Layer
-   ↓
-STL / STEP Output
+```text
+User prompt
+  -> parser
+  -> structured PartRequest
+  -> template registry
+  -> validation rules
+  -> estimated dimensions
+  -> planned STL/STEP exports
 ```
 
----
+CadQuery integration is intentionally isolated behind `backend/src/labsmith/export/`. The current scaffold returns export plans instead of writing files, so the API and UI can be developed before the CAD engine is installed and hardened.
 
-## 🔬 Supported Part Types (Initial)
+## Local setup
 
-* Tissue microarray molds
-* Tube racks (microcentrifuge, PCR)
-* Gel electrophoresis combs
-* Multi-well molds
-* Basic microfluidic channel molds
-
----
-
-## ⚠️ Limitations
-
-* Not intended for clinical or regulated use
-* Limited to simple parametric geometries
-* No advanced physics simulation (fit, flow, stress)
-
----
-
-## 🌱 Future Work
-
-* Automated tolerance optimization
-* Simulation-assisted design
-* Integration with lab robots (e.g., Opentrons)
-* Open-source library of lab part templates
-* Feedback-driven autonomous design loops
-
----
-
-## 🧭 Vision
-
-Enable laboratories to design and fabricate their own tools on demand, reducing reliance on expensive suppliers and accelerating scientific progress.
-
----
-
-## 📦 Getting Started (Conceptual)
+### Backend
 
 ```bash
-pip install cadquery
-python main.py
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e ".[dev]"
+npm run backend:dev
 ```
 
----
+The API runs at `http://localhost:8000`.
 
-## 🤝 Contributing
+Use `npm run backend:dev:reload` when your environment supports file watching.
 
-Contributions are welcome! Especially:
+Useful endpoints:
 
-* New parametric templates
-* Validation rules
-* UI improvements
+- `GET /health`
+- `GET /templates`
+- `POST /parse`
+- `POST /design`
 
----
+### Frontend
 
-## 📄 License
+```bash
+npm install
+npm run frontend:dev
+```
 
-MIT (or TBD)
+The Vite app runs at `http://localhost:5173` and calls the backend at `http://localhost:8000` by default. Override with `VITE_API_BASE_URL` when needed.
 
----
+## Current supported templates
 
-## 🧠 Tagline
+- Tube rack
+- Gel electrophoresis comb
+- General multi-well mold
 
-> From hypothesis to hardware — instantly.
+The broader product roadmap still includes multi-well molds and basic microfluidic channel molds, but those templates are not registered until the geometry and validation rules are defined.
+
+## Example prompts
+
+```text
+Create a multi-well mold with 96 wells, 1 mm diameter, 2 mm spacing
+Design a rack for 1.5 mL tubes that fits in a standard ice bucket
+Make a gel electrophoresis comb with 10 wells
+```
+
+## Verification
+
+```bash
+npm run backend:test
+npm run frontend:check
+```
+
+## Product vision
+
+LabSmith adds a missing tool-creation step to the scientific workflow:
+
+```text
+Hypothesis -> Experiment Design -> Tool Creation -> Execution -> Analysis
+```
+
+The long-term goal is to let labs produce simple, validated, fabrication-ready hardware on demand instead of relying on expensive niche suppliers or manual CAD work.

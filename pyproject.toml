@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "labsmith-backend"
+version = "0.1.0"
+description = "FastAPI backend for natural-language lab hardware CAD generation."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "pydantic>=2.6",
+  "uvicorn[standard]>=0.27"
+]
+
+[project.optional-dependencies]
+cad = [
+  "cadquery>=2.4"
+]
+llm = [
+  "openai>=1.30"
+]
+dev = [
+  "httpx>=0.27",
+  "pytest>=8.0",
+  "ruff>=0.4"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/src/labsmith"]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend/src"]
+testpaths = ["backend/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]

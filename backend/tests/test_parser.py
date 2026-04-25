@@ -1,0 +1,53 @@
+from labsmith.models import PartType
+from labsmith.parser import RuleBasedParser
+
+
+def test_parser_extracts_tma_mold_parameters() -> None:
+    parser = RuleBasedParser()
+
+    result = parser.parse(
+        "Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing"
+    )
+
+    assert result.part_type == PartType.TMA_MOLD
+    assert result.rows == 8
+    assert result.cols == 12
+    assert result.well_count == 96
+    assert result.diameter_mm == 1.0
+    assert result.spacing_mm == 2.0
+    assert result.depth_mm == 3.0
+
+
+def test_parser_extracts_tube_rack_defaults_from_volume() -> None:
+    parser = RuleBasedParser()
+
+    result = parser.parse("Design a rack for 1.5 mL tubes that fits in a standard ice bucket")
+
+    assert result.part_type == PartType.TUBE_RACK
+    assert result.rows == 4
+    assert result.cols == 6
+    assert result.diameter_mm == 11.0
+    assert result.spacing_mm == 15.0
+
+
+def test_parser_extracts_gel_comb_defaults() -> None:
+    parser = RuleBasedParser()
+
+    result = parser.parse("Make a gel electrophoresis comb with 10 wells")
+
+    assert result.part_type == PartType.GEL_COMB
+    assert result.well_count == 10
+    assert result.well_width_mm == 5.0
+    assert result.well_height_mm == 1.5
+    assert result.depth_mm == 8.0
+
+
+def test_parser_rejects_unknown_part_type() -> None:
+    parser = RuleBasedParser()
+
+    try:
+        parser.parse("Make a bracket for a microscope camera")
+    except ValueError as exc:
+        assert "supported lab part type" in str(exc)
+    else:
+        raise AssertionError("Expected parser to reject unknown part type.")
