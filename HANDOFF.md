@@ -574,144 +574,26 @@ Mitigation:
 
 ---
 
-## First Milestone
+## Suggested Implementation Direction
 
-## Milestone 1 — End-to-End TMA Mold Generator
+The implementation should follow a controlled, template-based architecture rather than freeform CAD generation. Natural language requests should be parsed into structured parameters, routed to a supported part template, validated with simple manufacturability rules, and then converted into fabrication-ready geometry using CadQuery.
 
-### Goal
+The most important technical principle is reliability: the language model should interpret user intent and extract structured values, but deterministic Python code should remain responsible for actual geometry generation. This makes the system easier to test, safer to extend, and much more robust for real use.
 
-Deliver a working CLI that converts a natural-language request for a tissue microarray mold into:
-
-* normalized JSON spec
-* validation report
-* STL file
-
-### Why this milestone first
-
-* directly tied to the motivating problem
-* easy to demo visually
-* enough complexity to validate the architecture
-* simple enough to finish quickly
-
-### Definition of done
-
-A user can run a single command with a TMA mold request and receive a valid STL plus a readable summary of assumptions and validation results.
-
-### Required deliverables
-
-* `TMAMoldSpec` Pydantic model
-* parser support for TMA mold requests
-* `build_tma_mold()` CadQuery function
-* `validate_tma_mold()` rules
-* STL export pipeline
-* CLI command
-* 3 example requests
-* 5 to 10 tests
-
-### Example supported inputs
-
-* `Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing`
-* `Make an 8 by 12 TMA mold with 1.5 mm wells`
-* `Generate a paraffin block mold with a 6x6 array of 1 mm holes`
-
-### Suggested implementation steps
-
-#### Step 1: repo bootstrap
-
-* create project structure
-* install CadQuery, Pydantic, Typer or argparse
-* set up formatting and tests
-
-#### Step 2: schema
-
-* define `TMAMoldSpec`
-* add defaults for omitted fields
-
-#### Step 3: parser
-
-* start with a hybrid parser using regex + defaults
-* optionally wrap with LLM later
-* parse rows, cols, well diameter, spacing, depth if present
-
-#### Step 4: validator
-
-* enforce positive dimensions
-* compute inter-well wall thickness
-* warn on risky geometry
-
-#### Step 5: CadQuery builder
-
-* generate rectangular base
-* cut or form repeated cylindrical wells
-* export STL
-
-#### Step 6: CLI
-
-* accept text input
-* display parsed parameters and warnings
-* save outputs to timestamped directory
-
-#### Step 7: tests and examples
-
-* add golden cases
-* verify exported STL exists
-
-### Nice-to-have extras
-
-* STEP export
-* simple rendered preview image
-* support both cavity-style and peg-style mold variants
+As the system grows, new supported lab parts should be added as modular templates with their own schemas, validators, and geometry builders. That allows the project to scale from one or two parts into a broader library of low-cost lab hardware without changing the core architecture.
 
 ---
 
-## Milestone 2 Candidate
+## What Good Looks Like
 
-After milestone 1 works, add one second template to prove extensibility.
+A strong implementation should make the workflow feel simple and trustworthy. A user should be able to describe a needed lab part in plain language, see the interpreted design parameters, understand any assumptions or warnings, and receive a fabrication-ready output file.
 
-Recommended choice: **tube rack**
-
-Why:
-
-* distinct geometry class from TMA mold
-* demonstrates fit tolerance logic
-* increases demo breadth without major architectural changes
-
----
-
-## Task Breakdown for a Coding Agent
-
-### Immediate tasks
-
-1. scaffold repo and dependencies
-2. implement Pydantic schema for TMA mold
-3. implement regex-based TMA parser with defaults
-4. implement TMA validator
-5. implement CadQuery TMA generator
-6. implement STL exporter
-7. wire CLI command
-8. add unit tests and sample inputs
-
-### Acceptance criteria
-
-* command runs locally without manual patching
-* a sample TMA request produces a non-empty STL file
-* validation report explains assumptions and issues
-* code is modular enough to add `tube_rack` next without refactoring the entire repo
-
----
-
-## What Good Looks Like for Demo Day
-
-A clean demo should look like this:
-
-1. user types: `Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing`
-2. system shows structured parameters and assumptions
-3. system reports validation status
-4. STL is generated and previewed
-5. presenter explains that the same architecture can support other lab fixtures by swapping templates
+The result should feel less like a chatbot and more like an autonomous scientific design tool: one that reduces friction between identifying an experimental need and creating the physical hardware required to carry it out.
 
 ---
 
 ## Final Recommendation
 
-Build **one narrow path extremely well** first: TMA mold from natural language to STL. Once that works, the rest of the system becomes a template expansion problem rather than a platform problem.
+Keep the initial implementation narrow, controlled, and highly reliable. The value of the project comes from proving that natural-language scientific intent can be translated into practical, low-cost physical tools through a structured AI-plus-parametric-CAD workflow.
+
+Once that core loop is working well, the project can expand naturally into a reusable platform for open, accessible lab hardware generation.
