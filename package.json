@@ -6,6 +6,8 @@
     "frontend"
   ],
   "scripts": {
+    "setup": "pip install -e '.[dev]' && npm install && npm run backend:migrate",
+    "backend:install": "pip install -e '.[dev]'",
     "backend:dev": "python3 -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000",
     "backend:dev:reload": "python3 -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload",
     "backend:test": "python3 -m pytest backend/tests",
