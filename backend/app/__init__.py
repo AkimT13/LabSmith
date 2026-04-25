@@ -1,0 +1,1 @@
+"""LabSmith application package."""

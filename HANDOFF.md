@@ -1,4 +1,4 @@
-# LabForge AI — Engineering Handoff
+# LabSmith — Engineering Handoff
 
 ## Objective
 
@@ -95,7 +95,7 @@ Artifacts + Summary + Warnings
 ## Suggested Repository Structure
 
 ```text
-labforge-ai/
+labsmith/
 ├─ README.md
 ├─ pyproject.toml
 ├─ requirements.txt

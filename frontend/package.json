@@ -2,22 +2,31 @@
   "name": "@labsmith/frontend",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "check": "tsc --noEmit"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
   },
   "dependencies": {
-    "lucide-react": "^0.468.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "@clerk/nextjs": "^7.2.7",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.11.0",
+    "next": "16.2.4",
+    "radix-ui": "^1.4.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.2.1",
-    "@types/react": "^18.2.47",
-    "@types/react-dom": "^18.2.18",
-    "typescript": "^5.3.3",
-    "vite": "^6.4.2"
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

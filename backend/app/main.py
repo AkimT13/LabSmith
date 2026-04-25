@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.config import settings
+from app.routers import auth, legacy
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("LabSmith starting up")
+    yield
+    logger.info("LabSmith shutting down")
+
+
+app = FastAPI(
+    title="LabSmith API",
+    version="0.1.0",
+    summary="Natural-language lab hardware design API.",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+# New v1 routes
+app.include_router(auth.router)
+
+# Legacy routes (from original scaffold)
+app.include_router(legacy.router)
