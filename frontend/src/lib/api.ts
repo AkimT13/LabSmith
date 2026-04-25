@@ -42,7 +42,7 @@ export async function apiFetch<T>(
   return response.json();
 }
 
-function buildApiUrl(path: string): string {
+export function buildApiUrl(path: string): string {
   if (!/^https?:\/\//.test(API_BASE_URL)) {
     throw new ApiError(
       0,
@@ -86,6 +86,14 @@ export interface UserProfile {
 
 export type LabRole = "owner" | "admin" | "member" | "viewer";
 export type SessionStatus = "active" | "completed" | "archived";
+export type MessageRole = "user" | "assistant" | "system";
+export type ArtifactType = "stl" | "step" | "spec_json" | "validation_json";
+export type PartType =
+  | "tma_mold"
+  | "tube_rack"
+  | "gel_comb"
+  | "multi_well_mold"
+  | "microfluidic_channel_mold";
 
 export interface Lab {
   id: string;
@@ -131,6 +139,50 @@ export interface DesignSession {
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface PartRequest {
+  part_type: PartType;
+  source_prompt: string | null;
+  rows: number | null;
+  cols: number | null;
+  well_count: number | null;
+  diameter_mm: number | null;
+  spacing_mm: number | null;
+  depth_mm: number | null;
+  well_width_mm: number | null;
+  well_height_mm: number | null;
+  tube_volume_ml: number | null;
+  notes: string[];
+}
+
+export interface ValidationIssue {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  field: string | null;
+}
+
+export interface Message {
+  id: string;
+  session_id: string;
+  role: MessageRole;
+  content: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface Artifact {
+  id: string;
+  session_id: string;
+  message_id: string | null;
+  artifact_type: ArtifactType;
+  file_path: string | null;
+  file_size_bytes: number | null;
+  spec_snapshot: Record<string, unknown> | null;
+  validation: Record<string, unknown> | null;
+  version: number;
+  created_at: string;
 }
 
 // API calls
@@ -183,6 +235,37 @@ export function fetchSessions(token: string, projectId: string): Promise<DesignS
 
 export function fetchSession(token: string, sessionId: string): Promise<DesignSession> {
   return apiFetch<DesignSession>(`/api/v1/sessions/${sessionId}`, { token });
+}
+
+export function fetchMessages(token: string, sessionId: string): Promise<Message[]> {
+  return apiFetch<Message[]>(`/api/v1/sessions/${sessionId}/messages`, { token });
+}
+
+export function fetchArtifacts(token: string, sessionId: string): Promise<Artifact[]> {
+  return apiFetch<Artifact[]>(`/api/v1/sessions/${sessionId}/artifacts`, { token });
+}
+
+export async function postChat(
+  token: string,
+  sessionId: string,
+  data: { content: string; metadata?: Record<string, unknown> },
+  signal?: AbortSignal,
+): Promise<Response> {
+  const response = await fetch(buildApiUrl(`/api/v1/sessions/${sessionId}/chat`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readErrorMessage(response));
+  }
+
+  return response;
 }
 
 export function createSession(

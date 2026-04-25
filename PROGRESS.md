@@ -380,8 +380,37 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 - **Next.js**: `The "middleware" file convention is deprecated. Please use "proxy" instead.` Cosmetic. Will migrate `frontend/src/middleware.ts` → `proxy.ts` once `@clerk/nextjs` adds a `clerkProxy()` export. Rolling our own `proxy.ts` would mean re-implementing Clerk's middleware logic — not worth the risk before M3.
 - **`react-hooks/set-state-in-effect`**: ESLint rule from React 19 flagging async data-fetch effects. We `// eslint-disable-next-line` those specific lines (sidebar tree fetch, workspace fetch, session detail fetch). The pattern is correct — the rule is a heuristic that doesn't recognize legitimate fetch-on-mount.
 
+---
+
+## Milestone 3: Chat-Based Design Sessions — IN PROGRESS
+
+### M3 frontend contract checkpoint
+- Added the M3 shared frontend API contract in `frontend/src/lib/api.ts`:
+  - `PartRequest`, `ValidationIssue`, `Message`, and `Artifact` types
+  - `fetchMessages`, `fetchArtifacts`, and `postChat`
+  - `postChat` returns the raw `text/event-stream` response for hook-level parsing
+- Added `frontend/src/lib/use-chat.ts`:
+  - Uses authenticated `fetch` with Clerk bearer token instead of `EventSource`
+  - Parses SSE `text_delta`, `spec_parsed`, `generation_started`, `generation_complete`, `message_complete`, and `error` events
+  - Maintains live assistant message state, parsed spec state, validation state, and generation status
+- Added session UI components under `frontend/src/components/sessions/`:
+  - `chat-panel.tsx`
+  - `message-bubble.tsx`
+  - `spec-card.tsx`
+  - `validation-badge.tsx`
+  - `artifact-list.tsx`
+- Updated `/dashboard/sessions/[sessionId]` to replace the M2 placeholder with:
+  - M3 chat panel
+  - artifact list with refresh-on-generation
+  - reserved M4 viewer panel
+- Current integration dependency:
+  - Runtime chat needs the backend M3 endpoints from `docs/M3_CONTRACT.md`, especially mock-mode `POST /api/v1/sessions/{session_id}/chat`, `GET /messages`, and `GET /artifacts`.
+- Verification:
+  - `npm --prefix frontend run lint`
+  - `npm --prefix frontend run build`
+
 ### Subsequent Milestones
-- **M3**: Chat-based design sessions (SSE streaming, LLM parser, message persistence)
+- **M3 remaining**: Backend chat endpoints, mock stream, message/artifact persistence, and frontend/backend integration pass
 - **M4**: 3D preview + file downloads (React Three Fiber STL viewer)
 - **M5**: Real CadQuery integration (replace export stubs)
 - **M6**: Polish + deployment (Docker, error handling, rate limiting)
