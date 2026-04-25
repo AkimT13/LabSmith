@@ -19,3 +19,5 @@ frontend/dist/
 frontend/.vite/
 
 backend/generated/
+.claude/
+claude.md
