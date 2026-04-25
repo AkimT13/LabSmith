@@ -115,7 +115,8 @@ frontend/
       sign-up/[[...sign-up]]/page.tsx
       (dashboard)/
         layout.tsx            # Sidebar (HierarchySidebar) + topbar shell
-        dashboard/labs/page.tsx  # Lab/project/session workspace with edit/delete UI
+        dashboard/labs/page.tsx                       # Lab/project/session workspace
+        dashboard/sessions/[sessionId]/page.tsx       # Session detail shell (M3 chat lands here)
     components/
       ui/                     # shadcn (avatar, button, card, dialog, alert-dialog, separator)
       dashboard/
@@ -194,7 +195,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ---
 
-## Milestone 2: Labs + Projects + Sessions CRUD — IN PROGRESS
+## Milestone 2: Labs + Projects + Sessions CRUD — COMPLETE
 
 ### Completed in this milestone
 
@@ -329,37 +330,55 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
   - `npm --prefix frontend run build`
   - `npm run backend:test`
 
-#### M2.4 — Detail Page Shells
-- Goal: prepare the route structure that M3 chat/design work will live in.
-- Changes:
-  - Add lab detail route
-  - Add project detail route
-  - Add session detail route shell
-  - Link list items to detail pages while keeping fast selection usable
+#### M2.4 — Detail Page Shells — COMPLETE (scoped down)
+- Goal: prepare the route structure M3 chat/design work will live in.
+- Decision: lab and project "detail" pages were skipped on purpose. The `/dashboard/labs` workspace already covers lab + project navigation well, and adding more routes for those just for the sake of routing would be churn. Only the **session detail shell** was actually needed, since M3's chat/3D viewer wants its own URL.
+- Changes shipped:
+  - New route at `/dashboard/sessions/[sessionId]` (file: `frontend/src/app/(dashboard)/dashboard/sessions/[sessionId]/page.tsx`).
+  - Client component using `useParams()` from `next/navigation` plus the existing `fetchSession` / `fetchProject` / `fetchLab` API helpers.
+  - Renders breadcrumbs (Labs / lab / project / session), a header with title + status badge + "Back to project" link, three context cards (Lab, Project, Session metadata), and a placeholder card describing what M3 will fill in.
+  - Sidebar session rows are now `<Link>`s pointing at `/dashboard/sessions/[sessionId]` (previously plain text after M2.3's prep).
+  - Workspace session rows: title area is now a `<Link>` to the same route. Edit/Archive/Delete icons remain inline next to the link, so quick CRUD doesn't require a navigation round-trip.
+  - Detail page also subscribes to `useDataChangedListener()` so edits made elsewhere are reflected immediately.
+- Why no lab/project detail routes: the workspace at `/dashboard/labs?lab=X&project=Y` already serves as the lab+project view. Adding parallel detail routes would duplicate the workspace UI. If a future need emerges (e.g., a per-lab settings page distinct from the modal), it can be added incrementally.
 - User test:
-  - Open a lab detail page from the dashboard
-  - Open a project detail page from a lab
-  - Open a session detail shell from a project
-  - Navigate back without losing context
-- Verification:
-  - `npm --prefix frontend run lint`
-  - `npm --prefix frontend run build`
+  - Click a session in the sidebar → lands on `/dashboard/sessions/<id>` with breadcrumbs filled in
+  - Click a session title in the workspace → same route, same content
+  - "Back to project" link returns to `/dashboard/labs?lab=...&project=...` with the correct selection
+  - Refresh on the session page → breadcrumbs and cards still resolve via the API
+- Verified: `npm --prefix frontend run lint`, `npm --prefix frontend run build`.
 
-#### M2.5 — Auth/Profile Polish + Final M2 Verification
+#### M2.5 — Auth/Profile Polish + Final M2 Verification — COMPLETE
 - Goal: remove obvious rough edges before M3.
-- Changes:
-  - Fix Clerk user profile mapping so real email/name show when available
-  - Document Clerk claim/webhook expectations
-  - Resolve or document current Next warnings where practical
-  - Final pass on permissions and empty/error states
-- User test:
-  - Sign out/sign in
-  - Confirm profile displays real data or a clear fallback
-  - Confirm lab/project/session CRUD still works after refresh
-- Verification:
-  - `npm run backend:test`
-  - `npm --prefix frontend run lint`
-  - `npm --prefix frontend run build`
+- Changes shipped:
+  - **Clerk profile mapping fix** (`backend/app/auth/clerk.py`):
+    - On first user creation, `get_current_user` now calls `GET https://api.clerk.com/v1/users/{id}` (using `LABSMITH_CLERK_SECRET_KEY` as a Bearer token) to pull the real email, name, and avatar instead of relying on JWT claims that aren't in the default JWT template.
+    - Existing users whose `email` is still a `<clerk_id>@clerk.placeholder` value are backfilled on next sign-in (one-shot lookup; if the API call fails the user is left as-is).
+    - The Clerk lookup is best-effort: if `LABSMITH_CLERK_SECRET_KEY` isn't configured or the request fails, the code falls back to JWT claims (email/name/picture) and finally to the placeholder. This means dev environments without a backend secret key still work; they just show the placeholder until configured.
+    - Helper functions: `_fetch_clerk_user_profile`, `_profile_from_clerk_payload`, `_profile_from_jwt`.
+  - **Webhook continues to be the canonical sync path** for created/updated/deleted users (`POST /api/v1/auth/webhook`). The Clerk Backend API call in `get_current_user` is the fallback for users who hit the API before the webhook fires (or in setups where webhooks aren't configured).
+  - **Documented Clerk JWT expectations** (below). Default Clerk session JWTs only include `sub`, `iat`, `exp`, etc. — no profile claims. Two ways to surface real profile data: (a) configure a JWT template in Clerk dashboard, or (b) rely on the Backend API lookup we just added. Option (b) is the default in this repo.
+  - **Documented the Next.js 16 `middleware → proxy` deprecation** (below). Kept `frontend/src/middleware.ts` as-is because `@clerk/nextjs` does not yet ship a `clerkProxy()` equivalent of `clerkMiddleware()` (the `proxy.d.ts` shipped by Clerk is for a different concept — proxying Clerk Frontend API requests, not the Next.js file-convention rename). The build warning is cosmetic; will migrate once Clerk publishes a proxy wrapper.
+- Verified: `npm run backend:test` (20 tests), `npm --prefix frontend run lint`, `npm --prefix frontend run build`.
+
+#### Clerk integration notes (for M3 and beyond)
+
+**JWT claims expected.** By default Clerk session JWTs include only `sub` (the `clerk_user_id`), `sid`, `iat`, `exp`, `iss`, `nbf`. Profile fields (email, name, image_url) are NOT in the default token. Backend code must either:
+1. Fetch the user from `https://api.clerk.com/v1/users/{id}` with the secret key (current implementation), or
+2. Configure a JWT template in the Clerk dashboard that includes `email`, `name`, `image_url` claims, and rely on those.
+
+**Webhook expected events.** `POST /api/v1/auth/webhook` handles `user.created`, `user.updated`, `user.deleted`. Configure the webhook in Clerk Dashboard → Webhooks, point it at `<backend>/api/v1/auth/webhook`, and copy the signing secret into `LABSMITH_CLERK_WEBHOOK_SECRET`. Without the secret, signature verification is skipped (dev only — must be configured for production).
+
+**Required env vars** (`backend/.env`):
+- `LABSMITH_CLERK_SECRET_KEY` — required for the user backfill lookup
+- `LABSMITH_CLERK_PUBLISHABLE_KEY` — informational, mirrors the frontend value
+- `LABSMITH_CLERK_JWKS_URL` — public JWKS endpoint, e.g. `https://<instance>.clerk.accounts.dev/.well-known/jwks.json`. The instance domain is base64-encoded inside the publishable key.
+- `LABSMITH_CLERK_WEBHOOK_SECRET` — `whsec_...` from the webhook config; only required in production.
+
+#### Known warnings (non-blocking)
+
+- **Next.js**: `The "middleware" file convention is deprecated. Please use "proxy" instead.` Cosmetic. Will migrate `frontend/src/middleware.ts` → `proxy.ts` once `@clerk/nextjs` adds a `clerkProxy()` export. Rolling our own `proxy.ts` would mean re-implementing Clerk's middleware logic — not worth the risk before M3.
+- **`react-hooks/set-state-in-effect`**: ESLint rule from React 19 flagging async data-fetch effects. We `// eslint-disable-next-line` those specific lines (sidebar tree fetch, workspace fetch, session detail fetch). The pattern is correct — the rule is a heuristic that doesn't recognize legitimate fetch-on-mount.
 
 ### Subsequent Milestones
 - **M3**: Chat-based design sessions (SSE streaming, LLM parser, message persistence)

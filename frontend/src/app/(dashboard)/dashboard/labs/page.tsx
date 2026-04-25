@@ -15,6 +15,7 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -599,7 +600,10 @@ function LabsWorkspace() {
                         key={sessionItem.id}
                         className={`group flex items-stretch gap-1`}
                       >
-                        <div className="flex-1 rounded-md border p-3 text-left">
+                        <Link
+                          href={`/dashboard/sessions/${sessionItem.id}`}
+                          className="flex-1 rounded-md border p-3 text-left transition-colors hover:bg-accent"
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="font-medium">{sessionItem.title}</p>
@@ -611,7 +615,7 @@ function LabsWorkspace() {
                               {sessionItem.status}
                             </span>
                           </div>
-                        </div>
+                        </Link>
                         {canCreate(selectedLab) && (
                           <div className="flex flex-col gap-1">
                             <Button

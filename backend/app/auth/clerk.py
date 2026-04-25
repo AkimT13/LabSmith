@@ -108,6 +108,62 @@ async def verify_clerk_token(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
+async def _fetch_clerk_user_profile(clerk_user_id: str) -> dict | None:
+    """Fetch the real user profile from Clerk's Backend API.
+
+    Returns None if the secret key is not configured or the request fails — callers
+    should fall back to JWT claims / placeholders rather than blocking sign-in.
+    """
+    if not settings.clerk_secret_key:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"https://api.clerk.com/v1/users/{clerk_user_id}",
+                headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:  # noqa: BLE001 — non-fatal best-effort fetch
+        logger.warning("Could not fetch Clerk user %s: %s", clerk_user_id, exc)
+        return None
+
+
+def _profile_from_clerk_payload(data: dict, clerk_user_id: str) -> dict:
+    """Extract email/display_name/avatar_url from a Clerk Backend API user payload."""
+    primary_email_id = data.get("primary_email_address_id")
+    email = None
+    for addr in data.get("email_addresses", []) or []:
+        if addr.get("id") == primary_email_id:
+            email = addr.get("email_address")
+            break
+    if email is None:
+        emails = data.get("email_addresses") or []
+        email = emails[0]["email_address"] if emails else None
+
+    display_name = (
+        " ".join(filter(None, [data.get("first_name"), data.get("last_name")])).strip()
+        or data.get("username")
+        or None
+    )
+
+    return {
+        "email": email or f"{clerk_user_id}@clerk.placeholder",
+        "display_name": display_name,
+        "avatar_url": data.get("image_url") or data.get("profile_image_url"),
+    }
+
+
+def _profile_from_jwt(payload: dict, clerk_user_id: str) -> dict:
+    """Best-effort profile from JWT claims when the Backend API is unavailable."""
+    return {
+        "email": payload.get("email") or f"{clerk_user_id}@clerk.placeholder",
+        "display_name": payload.get("name"),
+        "avatar_url": payload.get("image_url") or payload.get("picture"),
+    }
+
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -122,15 +178,33 @@ async def get_current_user(
     user = result.scalar_one_or_none()
 
     if user is None:
-        # Auto-create user from JWT claims (webhook may not have fired yet)
+        # Auto-create user. Prefer the Clerk Backend API for real profile data,
+        # since most Clerk JWTs don't include email/name claims by default.
+        clerk_profile = await _fetch_clerk_user_profile(clerk_user_id)
+        profile = (
+            _profile_from_clerk_payload(clerk_profile, clerk_user_id)
+            if clerk_profile
+            else _profile_from_jwt(payload, clerk_user_id)
+        )
         user = User(
             clerk_user_id=clerk_user_id,
-            email=payload.get("email", f"{clerk_user_id}@clerk.placeholder"),
-            display_name=payload.get("name"),
-            avatar_url=payload.get("image_url"),
+            email=profile["email"],
+            display_name=profile["display_name"],
+            avatar_url=profile["avatar_url"],
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
+    elif user.email.endswith("@clerk.placeholder"):
+        # Existing user has placeholder data — try once to backfill from Clerk.
+        clerk_profile = await _fetch_clerk_user_profile(clerk_user_id)
+        if clerk_profile:
+            profile = _profile_from_clerk_payload(clerk_profile, clerk_user_id)
+            if not profile["email"].endswith("@clerk.placeholder"):
+                user.email = profile["email"]
+                user.display_name = profile["display_name"]
+                user.avatar_url = profile["avatar_url"]
+                await db.commit()
+                await db.refresh(user)
 
     return user

@@ -222,13 +222,14 @@ export function HierarchySidebar() {
                         {isProjectOpen && (
                           <div className="ml-3 space-y-1 border-l pl-3">
                             {project.sessions.map((session) => (
-                              <div
+                              <Link
                                 key={session.id}
-                                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
+                                href={`/dashboard/sessions/${session.id}`}
+                                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
                               >
                                 <Rows3 className="h-4 w-4 shrink-0" />
                                 <span className="truncate">{session.title}</span>
-                              </div>
+                              </Link>
                             ))}
                             {project.sessions.length === 0 && (
                               <p className="px-2 py-1 text-xs text-muted-foreground">
