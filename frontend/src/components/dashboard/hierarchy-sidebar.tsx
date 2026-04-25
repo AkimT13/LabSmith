@@ -1,12 +1,15 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { ChevronRight, FolderKanban, FlaskConical, Rows3 } from "lucide-react";
+import { ChevronRight, FolderKanban, FlaskConical, Plus, Rows3 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { EntityFormDialog } from "@/components/dashboard/entity-form-dialog";
+import { Button } from "@/components/ui/button";
 import {
+  createLab,
   fetchLabs,
   fetchProjects,
   fetchSessions,
@@ -14,6 +17,7 @@ import {
   type Lab,
   type Project,
 } from "@/lib/api";
+import { emitDataChanged, useDataChangedListener } from "@/lib/data-events";
 import { cn } from "@/lib/utils";
 
 type ProjectNode = Project & { sessions: DesignSession[] };
@@ -21,6 +25,7 @@ type LabNode = Lab & { projects: ProjectNode[] };
 
 export function HierarchySidebar() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const activeLabId = searchParams.get("lab");
   const activeProjectId = searchParams.get("project");
@@ -30,6 +35,7 @@ export function HierarchySidebar() {
   const [openProjectIds, setOpenProjectIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const visibleOpenLabIds = useMemo(() => {
     const next = new Set(openLabIds);
@@ -43,64 +49,55 @@ export function HierarchySidebar() {
     return next;
   }, [activeProjectId, openProjectIds]);
 
-  useEffect(() => {
-    let ignore = false;
+  const loadTree = useCallback(async () => {
+    if (!isLoaded) return;
 
-    async function loadTree() {
-      if (!isLoaded) return;
+    if (!isSignedIn) {
+      setTree([]);
+      setLoading(false);
+      return;
+    }
 
-      if (!isSignedIn) {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = await getToken();
+      if (!token) {
         setTree([]);
-        setLoading(false);
+        setError("Sign in to load labs.");
         return;
       }
 
-      setLoading(true);
-      setError(null);
+      const labs = await fetchLabs(token);
+      const labNodes = await Promise.all(
+        labs.map(async (lab) => {
+          const projects = await fetchProjects(token, lab.id);
+          const projectNodes = await Promise.all(
+            projects.map(async (project) => ({
+              ...project,
+              sessions: await fetchSessions(token, project.id),
+            })),
+          );
 
-      try {
-        const token = await getToken();
-        if (!token) {
-          setTree([]);
-          setError("Sign in to load labs.");
-          return;
-        }
+          return { ...lab, projects: projectNodes };
+        }),
+      );
 
-        const labs = await fetchLabs(token);
-        const labNodes = await Promise.all(
-          labs.map(async (lab) => {
-            const projects = await fetchProjects(token, lab.id);
-            const projectNodes = await Promise.all(
-              projects.map(async (project) => ({
-                ...project,
-                sessions: await fetchSessions(token, project.id),
-              })),
-            );
-
-            return { ...lab, projects: projectNodes };
-          }),
-        );
-
-        if (!ignore) {
-          setTree(labNodes);
-        }
-      } catch (err) {
-        if (!ignore) {
-          setError(err instanceof Error ? err.message : "Unable to load labs.");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
+      setTree(labNodes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load labs.");
+    } finally {
+      setLoading(false);
     }
+  }, [getToken, isLoaded, isSignedIn]);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     loadTree();
+  }, [loadTree, activeLabId, activeProjectId, activeSessionId]);
 
-    return () => {
-      ignore = true;
-    };
-  }, [activeLabId, activeProjectId, activeSessionId, getToken, isLoaded, isSignedIn]);
+  useDataChangedListener(loadTree);
 
   function toggleLab(labId: string) {
     setOpenLabIds((current) => toggleId(current, labId));
@@ -110,24 +107,52 @@ export function HierarchySidebar() {
     setOpenProjectIds((current) => toggleId(current, projectId));
   }
 
+  async function handleCreateLab(values: { name: string; description: string }) {
+    const token = await getToken();
+    if (!token) {
+      throw new Error("No Clerk session token. Sign out and sign back in.");
+    }
+    const lab = await createLab(token, {
+      name: values.name,
+      description: values.description || null,
+    });
+    emitDataChanged();
+    router.push(workspaceHref(lab.id));
+  }
+
   return (
     <nav className="flex flex-col gap-1 p-3" aria-label="Laboratory hierarchy">
-      <Link
-        href="/dashboard/labs"
-        className={cn(
-          "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent",
-          !activeLabId && "bg-accent",
-        )}
-      >
-        <FlaskConical className="h-4 w-4" />
-        Laboratories
-      </Link>
+      <div className="flex items-center gap-1">
+        <Link
+          href="/dashboard/labs"
+          className={cn(
+            "flex flex-1 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent",
+            !activeLabId && "bg-accent",
+          )}
+        >
+          <FlaskConical className="h-4 w-4" />
+          Laboratories
+        </Link>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          onClick={() => setCreateOpen(true)}
+          aria-label="Create lab"
+          title="Create lab"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
 
       <div className="mt-2 space-y-1">
         {loading && <p className="px-3 py-2 text-xs text-muted-foreground">Loading...</p>}
         {error && <p className="px-3 py-2 text-xs text-destructive">{error}</p>}
         {!loading && !error && tree.length === 0 && (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No labs yet.</p>
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            No labs yet. Click + to create one.
+          </p>
         )}
 
         {tree.map((lab) => {
@@ -230,6 +255,18 @@ export function HierarchySidebar() {
           );
         })}
       </div>
+
+      <EntityFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="Create laboratory"
+        description="Labs are the top-level workspace. You'll be the owner."
+        submitLabel="Create lab"
+        onSubmit={handleCreateLab}
+        nameLabel="Lab name"
+        namePlaceholder="e.g. Curry Lab"
+        descriptionPlaceholder="What does this lab work on?"
+      />
     </nav>
   );
 }

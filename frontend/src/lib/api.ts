@@ -171,3 +171,66 @@ export function createSession(
     body: JSON.stringify(data),
   });
 }
+
+// Updates / deletes
+export function updateLab(
+  token: string,
+  labId: string,
+  data: { name?: string; description?: string | null },
+): Promise<Lab> {
+  return apiFetch<Lab>(`/api/v1/labs/${labId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteLab(token: string, labId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/labs/${labId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function updateProject(
+  token: string,
+  projectId: string,
+  data: { name?: string; description?: string | null },
+): Promise<Project> {
+  return apiFetch<Project>(`/api/v1/projects/${projectId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteProject(token: string, projectId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/projects/${projectId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function updateSession(
+  token: string,
+  sessionId: string,
+  data: {
+    title?: string;
+    status?: SessionStatus;
+    part_type?: string | null;
+    current_spec?: Record<string, unknown> | null;
+  },
+): Promise<DesignSession> {
+  return apiFetch<DesignSession>(`/api/v1/sessions/${sessionId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteSession(token: string, sessionId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/sessions/${sessionId}`, {
+    method: "DELETE",
+    token,
+  });
+}

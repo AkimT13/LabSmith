@@ -106,23 +106,30 @@ backend/
 
 frontend/
   src/
-    middleware.ts         # Clerk route protection
-    lib/
-      api.ts             # API client with token injection
-      utils.ts           # cn() for tailwind class merging
+    middleware.ts             # Clerk route protection
     app/
-      layout.tsx          # ClerkProvider + root shell
-      page.tsx            # Landing page
-      globals.css         # Tailwind + shadcn theme variables
+      layout.tsx              # ClerkProvider + root shell
+      page.tsx                # Landing page
+      globals.css             # Tailwind + shadcn theme variables
       sign-in/[[...sign-in]]/page.tsx
       sign-up/[[...sign-up]]/page.tsx
       (dashboard)/
-        layout.tsx        # Sidebar + topbar shell
-        dashboard/labs/page.tsx  # Lab list + user profile card
-    components/ui/        # shadcn components (avatar, card, separator)
-  .env.local              # Clerk keys + API URL (not committed)
-  .env.local.example      # Template
-  components.json         # shadcn/ui config
+        layout.tsx            # Sidebar (HierarchySidebar) + topbar shell
+        dashboard/labs/page.tsx  # Lab/project/session workspace with edit/delete UI
+    components/
+      ui/                     # shadcn (avatar, button, card, dialog, alert-dialog, separator)
+      dashboard/
+        hierarchy-sidebar.tsx     # Sidebar tree + "+" create-lab dialog trigger
+        entity-form-dialog.tsx    # Generic name/description form (labs + projects)
+        session-form-dialog.tsx   # Session create/edit form (title/part_type/status)
+        confirm-delete-dialog.tsx # AlertDialog wrapper for destructive actions
+    lib/
+      api.ts                  # API client + types + CRUD (labs/projects/sessions)
+      utils.ts                # cn() for tailwind class merging
+      data-events.ts          # emitDataChanged() / useDataChangedListener()
+  .env.local                  # Clerk keys + API URL (not committed)
+  .env.local.example          # Template
+  components.json             # shadcn/ui config
 
 pyproject.toml            # Python deps, pytest config, ruff config
 package.json              # npm workspaces, run scripts
@@ -219,13 +226,16 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 - Lab slugs are generated from lab names and de-duped with numeric suffixes
 
 #### Frontend
-- Expanded `frontend/src/lib/api.ts` with typed API methods for labs, projects, and sessions
-- Replaced the `/dashboard/labs` placeholder with a working workspace:
+- Expanded `frontend/src/lib/api.ts` with typed API methods for labs, projects, sessions — including `update*` and `delete*` for all three.
+- The `/dashboard/labs` workspace is a full CRUD UI:
   - profile summary
-  - lab list + create form
-  - project list + create form for the selected lab
-  - session list + create form for the selected project
-- The page now uses the authenticated Clerk token for all API calls
+  - lab list (selection only — creation moved to the sidebar `+` button via dialog)
+  - selected-lab header with edit/delete actions (role-gated)
+  - project list with per-row edit/delete + a "New" button that opens a dialog
+  - session list with per-row edit/archive/delete + a "New" button that opens a dialog
+- All forms (create + edit, for labs/projects/sessions) use shared shadcn-`Dialog` components in `frontend/src/components/dashboard/`. Delete operations use `AlertDialog`-based confirmation prompts.
+- Sidebar (`HierarchySidebar`) gained a `+` button for lab creation. After any mutation, components emit a `labsmith:data-changed` event (helper at `src/lib/data-events.ts`) so the sidebar tree and the workspace page refetch in sync.
+- All API calls use the authenticated Clerk token via `useAuth().getToken()`.
 
 #### Tests
 - Added `backend/tests/test_crud_api.py`
@@ -260,24 +270,33 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
   - `npm --prefix frontend run lint`
   - `npm --prefix frontend run build`
 
-#### M2.2 — Edit/Delete UI
+#### M2.2 — Edit/Delete UI — COMPLETE
 - Goal: expose the CRUD operations already implemented in the backend.
-- Changes:
-  - Rename/update lab description
-  - Delete lab with confirmation
-  - Rename/update project description
-  - Delete project with confirmation
-  - Rename/update/archive/delete session
+- Changes shipped:
+  - **Sidebar lab creation**: clicking the `+` button next to "Laboratories" in the sidebar opens a dialog to create a lab. The previous inline create-lab form in the workspace content area has been removed.
+  - **Lab edit/delete**: pencil + trash icons appear in the selected-lab header for users with `admin`/`owner` role. Edit opens a dialog; delete opens a confirmation alert and routes back to `/dashboard/labs` after success. Delete is owner-only; the trash icon is hidden for non-owners.
+  - **Project create/edit/delete**: project list rows show pencil + trash icons (trash for `admin`/`owner` only). The "New" button at the top of the project panel opens a create-project dialog.
+  - **Session create/edit/archive/delete**: session list rows show pencil + archive + trash icons. Archive uses a one-click PATCH that sets `status: archived` (icon hides once already archived). Edit opens a dialog that includes a status select. Create uses the same dialog without the status field.
+  - **Cross-component refresh**: a small custom-event helper at `frontend/src/lib/data-events.ts` (`emitDataChanged()` / `useDataChangedListener()`) keeps the sidebar tree and the workspace page in sync after any mutation without a full page reload.
+  - **Reusable dialogs** (`frontend/src/components/dashboard/`):
+    - `entity-form-dialog.tsx` — generic name/description form (used for labs and projects). Form body is conditionally rendered when open, so initial values are picked up via `useState` initializer (no `useEffect` needed; satisfies React 19's `react-hooks/set-state-in-effect` rule).
+    - `session-form-dialog.tsx` — title/part_type/optional status form (used for create + edit sessions).
+    - `confirm-delete-dialog.tsx` — destructive `AlertDialog` wrapper with inline error display.
+  - Added shadcn `dialog`, `alert-dialog`, and `button` components.
+  - Extended `frontend/src/lib/api.ts` with `updateLab`, `deleteLab`, `updateProject`, `deleteProject`, `updateSession`, `deleteSession`.
+- Permissions surfaced in UI:
+  - `viewer` → no action icons
+  - `member` → can create projects/sessions, edit and (where allowed) delete them
+  - `admin` → can also edit lab and delete projects
+  - `owner` → can also delete the lab
 - User test:
-  - Update `Curry Lab` description and refresh
-  - Rename `Bench Tools` and refresh
-  - Archive `Test Tubes` and confirm status changes
-  - Delete a test session/project/lab and confirm it disappears
-- Verification:
-  - Add or update frontend API methods
-  - `npm --prefix frontend run lint`
-  - `npm --prefix frontend run build`
-  - `npm run backend:test`
+  - Click `+` in sidebar → dialog opens → create a lab → sidebar refreshes
+  - Edit selected lab description, save → sidebar + content reflect new name/description
+  - Create a project from the "New" button in the project panel
+  - Edit a project name → list updates
+  - Archive a session → status badge flips to `archived` and archive icon disappears
+  - Delete a session/project/lab → confirmation dialog appears, then item disappears
+- Verified: `npm --prefix frontend run lint`, `npm --prefix frontend run build`, `npm run backend:test` (20 tests).
 
 #### M2.3 — Member Management UI
 - Goal: make the existing lab member APIs usable from the dashboard.
