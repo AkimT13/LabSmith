@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import auth, legacy
+from app.routers import auth, labs, legacy, projects, sessions
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,6 +44,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 # New v1 routes
 app.include_router(auth.router)
+app.include_router(labs.router)
+app.include_router(projects.router)
+app.include_router(sessions.router)
 
 # Legacy routes (from original scaffold)
 app.include_router(legacy.router)

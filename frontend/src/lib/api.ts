@@ -35,6 +35,10 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, await readErrorMessage(response));
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json();
 }
 
@@ -80,7 +84,90 @@ export interface UserProfile {
   avatar_url: string | null;
 }
 
+export type LabRole = "owner" | "admin" | "member" | "viewer";
+export type SessionStatus = "active" | "completed" | "archived";
+
+export interface Lab {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  role: LabRole | null;
+}
+
+export interface Project {
+  id: string;
+  laboratory_id: string;
+  name: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DesignSession {
+  id: string;
+  project_id: string;
+  title: string;
+  status: SessionStatus;
+  part_type: string | null;
+  current_spec: Record<string, unknown> | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // API calls
 export function fetchCurrentUser(token: string): Promise<UserProfile> {
   return apiFetch<UserProfile>("/api/v1/auth/me", { token });
+}
+
+export function fetchLabs(token: string): Promise<Lab[]> {
+  return apiFetch<Lab[]>("/api/v1/labs", { token });
+}
+
+export function createLab(
+  token: string,
+  data: { name: string; description?: string | null },
+): Promise<Lab> {
+  return apiFetch<Lab>("/api/v1/labs", {
+    method: "POST",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function fetchProjects(token: string, labId: string): Promise<Project[]> {
+  return apiFetch<Project[]>(`/api/v1/labs/${labId}/projects`, { token });
+}
+
+export function createProject(
+  token: string,
+  labId: string,
+  data: { name: string; description?: string | null },
+): Promise<Project> {
+  return apiFetch<Project>(`/api/v1/labs/${labId}/projects`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function fetchSessions(token: string, projectId: string): Promise<DesignSession[]> {
+  return apiFetch<DesignSession[]>(`/api/v1/projects/${projectId}/sessions`, { token });
+}
+
+export function createSession(
+  token: string,
+  projectId: string,
+  data: { title: string; part_type?: string | null; current_spec?: Record<string, unknown> | null },
+): Promise<DesignSession> {
+  return apiFetch<DesignSession>(`/api/v1/projects/${projectId}/sessions`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(data),
+  });
 }

@@ -187,36 +187,72 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ---
 
-## Milestone 2: Labs + Projects + Sessions CRUD — NEXT
+## Milestone 2: Labs + Projects + Sessions CRUD — IN PROGRESS
 
-### What needs to be built
+### Completed in this milestone
 
 #### Backend
-- **Labs CRUD**: `POST/GET /api/v1/labs`, `GET/PATCH/DELETE /api/v1/labs/{lab_id}`
-- **Lab membership**: `GET/POST /api/v1/labs/{lab_id}/members`, `PATCH/DELETE /api/v1/labs/{lab_id}/members/{id}`
-- **`require_lab_role` dependency** — authorization check (owner, admin, member, viewer) per endpoint
-- **Projects CRUD**: `POST/GET /api/v1/labs/{lab_id}/projects`, `GET/PATCH/DELETE /api/v1/projects/{project_id}`
-- **Sessions CRUD**: `POST/GET /api/v1/projects/{project_id}/sessions`, `GET/PATCH/DELETE /api/v1/sessions/{session_id}`
-- Service layer for each entity (business logic separate from routes)
-- Pydantic request/response schemas for all endpoints
+- Added service layer under `backend/app/services/`:
+  - `access.py` — lab/project/session membership lookups and role enforcement
+  - `labs.py` — lab CRUD, slug generation, member management, last-owner protection
+  - `projects.py` — project CRUD scoped through lab membership
+  - `sessions.py` — design session CRUD scoped through project membership
+- Added Pydantic schemas:
+  - `app/schemas/labs.py`
+  - `app/schemas/projects.py`
+  - `app/schemas/sessions.py`
+- Added routers and wired them into `app.main`:
+  - `POST/GET /api/v1/labs`
+  - `GET/PATCH/DELETE /api/v1/labs/{lab_id}`
+  - `GET/POST /api/v1/labs/{lab_id}/members`
+  - `PATCH/DELETE /api/v1/labs/{lab_id}/members/{membership_id}`
+  - `GET/POST /api/v1/labs/{lab_id}/projects`
+  - `GET/PATCH/DELETE /api/v1/projects/{project_id}`
+  - `GET/POST /api/v1/projects/{project_id}/sessions`
+  - `GET/PATCH/DELETE /api/v1/sessions/{session_id}`
+- Role enforcement:
+  - `viewer` can read lab/project/session data
+  - `member` can create/update projects and sessions
+  - `admin` can update labs, manage members, and delete projects
+  - `owner` can delete labs
+- Lab creation automatically creates an owner membership for the creator
+- Lab slugs are generated from lab names and de-duped with numeric suffixes
 
 #### Frontend
-- Lab list page, create lab form, lab detail/overview page
-- Lab settings page with member management (invite, change role, remove)
-- Project list within a lab, create project form, project detail
-- Session list within a project (session creation will be fleshed out in M3)
-- Sidebar navigation with lab/project hierarchy
-- Breadcrumb navigation
+- Expanded `frontend/src/lib/api.ts` with typed API methods for labs, projects, and sessions
+- Replaced the `/dashboard/labs` placeholder with a working workspace:
+  - profile summary
+  - lab list + create form
+  - project list + create form for the selected lab
+  - session list + create form for the selected project
+- The page now uses the authenticated Clerk token for all API calls
 
-#### Key patterns to follow
-- All DB models already exist in `app/models/` — no migrations needed
-- Auth dependency `get_current_user` is ready — use it in all routes
-- Create new routers: `app/routers/labs.py`, `app/routers/projects.py`, `app/routers/sessions.py`
-- Create new schemas: `app/schemas/labs.py`, `app/schemas/projects.py`, `app/schemas/sessions.py`
-- Lab slug should be auto-generated from lab name (slugify)
-- When creating a lab, auto-create an owner membership for the creator
+#### Tests
+- Added `backend/tests/test_crud_api.py`
+- CRUD integration coverage:
+  - lab/project/session create, list, update, delete flow
+  - viewer read access but no project creation or lab update
+  - last owner cannot be demoted or removed
+- Full backend suite: **20 tests passing**
+- Frontend lint and production build pass
 
-### Subsequent Milestones (for reference)
+### Still to do in this milestone
+
+#### Backend
+- Add stricter permission edge cases if needed, especially around admin managing owners
+- Decide whether member/project/session deletes should be admin-only or creator/member scoped
+- Add pagination/search once real data volume justifies it
+- Add pending invitation flow if labs need invites for users who do not yet exist
+
+#### Frontend
+- Add dedicated lab detail/settings pages
+- Add member management UI
+- Add project detail pages
+- Add session detail page as the entry point for chat/design work in M3
+- Add sidebar lab/project hierarchy
+- Add breadcrumbs
+
+### Subsequent Milestones
 - **M3**: Chat-based design sessions (SSE streaming, LLM parser, message persistence)
 - **M4**: 3D preview + file downloads (React Three Fiber STL viewer)
 - **M5**: Real CadQuery integration (replace export stubs)
