@@ -384,7 +384,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ## Milestone 3: Chat-Based Design Sessions — IN PROGRESS
 
-Both agents work to the contract at `docs/M3_CONTRACT.md`. Branches: `m3_akim` (backend), and a frontend branch on the teammate's machine.
+Both agents work to the contract at `docs/M3_CONTRACT.md`. Branches `m3_akim` (backend) and `m3-frontend` (frontend) have both been merged into `main`.
 
 ### M3 backend — Day-1 mock-mode landing (this branch, `m3_akim`) — DONE
 
@@ -424,6 +424,35 @@ Full backend suite: **25 tests passing** (20 existing + 5 new).
 - `GET /api/v1/sessions/{id}/messages` → hydration data
 - `GET /api/v1/sessions/{id}/artifacts` → artifact list (real rows, fake byte counts)
 - Auth + lab-membership rules unchanged — the existing Clerk Bearer token works on every endpoint
+
+### M3 frontend — Chat session UI landing (branch `m3-frontend`) — DONE
+
+The frontend is wired to the M3 contract surface and can run against Akim's mock-mode backend stream.
+
+#### What shipped
+- **API contract helpers** in `frontend/src/lib/api.ts`:
+  - `PartRequest`, `ValidationIssue`, `Message`, and `Artifact` TypeScript types mirror `docs/M3_CONTRACT.md`
+  - `fetchMessages`, `fetchArtifacts`, and `postChat`
+  - `postChat` returns the raw stream response so the hook can parse SSE events
+- **SSE hook** in `frontend/src/lib/use-chat.ts`:
+  - Uses authenticated `fetch` with the Clerk Bearer token instead of `EventSource`
+  - Parses `text_delta`, `spec_parsed`, `generation_started`, `generation_complete`, `message_complete`, and `error`
+  - Maintains live assistant message text, parsed spec state, validation issues, generation state, and inline errors
+  - Refreshes persisted messages after each completed stream
+- **Session components** under `frontend/src/components/sessions/`:
+  - `chat-panel.tsx` — message list, input, refresh action, streaming state, and archived-session read-only behavior
+  - `message-bubble.tsx` — user/assistant message rendering
+  - `spec-card.tsx` — parsed spec display plus generation status
+  - `validation-badge.tsx` — validation summary badge
+  - `artifact-list.tsx` — artifact list with manual refresh and file-size display
+- **Session detail route** at `/dashboard/sessions/[sessionId]`:
+  - Replaced the M2 placeholder card with the M3 chat panel
+  - Added artifact list refresh on `generation_complete`
+  - Added a reserved M4 viewer panel; preview/download bodies remain out of M3 scope
+
+#### Verification
+- `npm --prefix frontend run lint`
+- `npm --prefix frontend run build`
 
 #### Open work for M3 backend (still to come on this branch or later)
 - Replace `_build_assistant_text_chunks` with a real LLM call (OpenAI or similar). Public surface stays the same — it's still an iterator yielding `text_delta` payloads.
