@@ -236,21 +236,100 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 - Full backend suite: **20 tests passing**
 - Frontend lint and production build pass
 
-### Still to do in this milestone
+### M2 Plan
 
-#### Backend
-- Add stricter permission edge cases if needed, especially around admin managing owners
-- Decide whether member/project/session deletes should be admin-only or creator/member scoped
-- Add pagination/search once real data volume justifies it
-- Add pending invitation flow if labs need invites for users who do not yet exist
+#### M2.1 — Hierarchy Clarity + Navigation — COMPLETE
+- Goal: make it obvious that projects are inside the selected lab and sessions are inside the selected project.
+- Changes:
+  - Add contextual headings: `Projects in {lab}` and `Sessions in {project}`
+  - Add breadcrumb/context strip: `Labs / {lab} / {project}`
+  - Move lab/project/session navigation into a collapsible left sidebar tree
+  - Use `lab`, `project`, and `session` query params so sidebar and page selection stay in sync
+  - Add empty states for "select a lab" and "select a project"
+  - Update sidebar/dashboard copy to reflect the nested model
+- User test:
+  - Create or select a lab
+  - Expand the selected lab in the left sidebar
+  - Confirm the Projects panel names that lab
+  - Create or select a project
+  - Expand the selected project in the left sidebar
+  - Confirm the Sessions panel names that project
+  - Select a session from the sidebar or session list and confirm the URL includes `session=...`
+  - Refresh and confirm context restores sensibly
+- Verification:
+  - `npm --prefix frontend run lint`
+  - `npm --prefix frontend run build`
 
-#### Frontend
-- Add dedicated lab detail/settings pages
-- Add member management UI
-- Add project detail pages
-- Add session detail page as the entry point for chat/design work in M3
-- Add sidebar lab/project hierarchy
-- Add breadcrumbs
+#### M2.2 — Edit/Delete UI
+- Goal: expose the CRUD operations already implemented in the backend.
+- Changes:
+  - Rename/update lab description
+  - Delete lab with confirmation
+  - Rename/update project description
+  - Delete project with confirmation
+  - Rename/update/archive/delete session
+- User test:
+  - Update `Curry Lab` description and refresh
+  - Rename `Bench Tools` and refresh
+  - Archive `Test Tubes` and confirm status changes
+  - Delete a test session/project/lab and confirm it disappears
+- Verification:
+  - Add or update frontend API methods
+  - `npm --prefix frontend run lint`
+  - `npm --prefix frontend run build`
+  - `npm run backend:test`
+
+#### M2.3 — Member Management UI
+- Goal: make the existing lab member APIs usable from the dashboard.
+- Changes:
+  - List lab members for selected lab
+  - Add an existing user by email
+  - Change member role
+  - Remove member
+  - Surface last-owner protection cleanly
+- User test:
+  - Open selected lab members area
+  - Confirm current user appears as `owner`
+  - Try demoting/removing the only owner and confirm the UI shows the backend error
+  - If another test user exists, add them by email and change/remove role
+- Verification:
+  - Add frontend API methods for members
+  - Add backend permission edge-case tests if needed
+  - `npm --prefix frontend run lint`
+  - `npm --prefix frontend run build`
+  - `npm run backend:test`
+
+#### M2.4 — Detail Page Shells
+- Goal: prepare the route structure that M3 chat/design work will live in.
+- Changes:
+  - Add lab detail route
+  - Add project detail route
+  - Add session detail route shell
+  - Link list items to detail pages while keeping fast selection usable
+- User test:
+  - Open a lab detail page from the dashboard
+  - Open a project detail page from a lab
+  - Open a session detail shell from a project
+  - Navigate back without losing context
+- Verification:
+  - `npm --prefix frontend run lint`
+  - `npm --prefix frontend run build`
+
+#### M2.5 — Auth/Profile Polish + Final M2 Verification
+- Goal: remove obvious rough edges before M3.
+- Changes:
+  - Fix Clerk user profile mapping so real email/name show when available
+  - Document Clerk claim/webhook expectations
+  - Resolve or document current Next warnings where practical
+  - Final pass on permissions and empty/error states
+- User test:
+  - Sign out/sign in
+  - Confirm profile displays real data or a clear fallback
+  - Confirm lab/project/session CRUD still works after refresh
+- Verification:
+  - `npm run backend:test`
+  - `npm --prefix frontend run lint`
+  - `npm --prefix frontend run build`
 
 ### Subsequent Milestones
 - **M3**: Chat-based design sessions (SSE streaming, LLM parser, message persistence)

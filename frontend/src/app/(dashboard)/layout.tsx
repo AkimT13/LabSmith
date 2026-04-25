@@ -1,6 +1,7 @@
 import { UserButton } from "@clerk/nextjs";
-import Link from "next/link";
 import { FlaskConical } from "lucide-react";
+import { Suspense } from "react";
+import { HierarchySidebar } from "@/components/dashboard/hierarchy-sidebar";
 import { Separator } from "@/components/ui/separator";
 
 export default function DashboardLayout({
@@ -11,20 +12,17 @@ export default function DashboardLayout({
   return (
     <div className="flex h-full min-h-screen">
       {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r bg-muted/30 md:block">
+      <aside className="hidden w-64 shrink-0 overflow-y-auto border-r bg-muted/30 md:block">
         <div className="flex h-14 items-center gap-2 px-4 font-semibold">
           <FlaskConical className="h-5 w-5" />
           <span>LabSmith</span>
         </div>
         <Separator />
-        <nav className="flex flex-col gap-1 p-3">
-          <Link
-            href="/dashboard/labs"
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
-          >
-            Laboratories
-          </Link>
-        </nav>
+        <Suspense
+          fallback={<p className="p-3 text-xs text-muted-foreground">Loading...</p>}
+        >
+          <HierarchySidebar />
+        </Suspense>
       </aside>
 
       {/* Main content */}
