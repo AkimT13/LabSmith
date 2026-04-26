@@ -118,3 +118,36 @@ def test_parser_rejects_unknown_part_type() -> None:
         assert "supported lab part type" in str(exc)
     else:
         raise AssertionError("Expected parser to reject unknown part type.")
+
+
+def test_parser_detects_pipette_tip_rack() -> None:
+    """'tip rack' should be PIPETTE_TIP_RACK, NOT generic tube_rack — order
+    of detection matters because both contain the word 'rack'."""
+    parser = RuleBasedParser()
+
+    result = parser.parse("Design a 96-tip pipette tip rack")
+
+    assert result.part_type == PartType.PIPETTE_TIP_RACK
+    assert result.rows == 8
+    assert result.cols == 12
+    assert result.well_count == 96
+
+
+def test_parser_detects_petri_dish_stand() -> None:
+    parser = RuleBasedParser()
+
+    result = parser.parse("I need a petri dish stand for my incubator")
+
+    assert result.part_type == PartType.PETRI_DISH_STAND
+    assert result.well_count == 5  # default
+    assert result.diameter_mm == 90.0  # default
+
+
+def test_parser_detects_multi_well_mold() -> None:
+    parser = RuleBasedParser()
+
+    result = parser.parse("Design a 96 well plate mold")
+
+    assert result.part_type == PartType.MULTI_WELL_MOLD
+    assert result.rows == 8
+    assert result.cols == 12

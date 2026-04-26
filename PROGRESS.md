@@ -671,6 +671,24 @@ Restart the backend. No code changes needed; the agent picks up the new provider
 - Frontend has no surface for surfacing the `extraction_source` metadata. If we want users to know "this was generated via natural language" vs "fell back to rule-based," that's a small UI addition.
 - The OpenAI extractor doesn't yet stream — it makes a single completion call. Streaming structured output exists in the API but isn't worth the complexity for this use case (the call is fast enough; the streamed text is the user-visible part).
 
+### Part type expansion (shipped alongside M7)
+
+Bumped the part-type catalog from 2 to 5 supported types. With the M7 LLM extractor, each new type becomes accessible via natural language for free — no parser code per type, just a CadQuery builder + JSON schema entry + validation rules.
+
+- **`multi_well_mold`** (was declared but unbuilt) — flat plate with a grid of recessed cylindrical wells. Defaults to SBS-standard 8×12 / 9 mm spacing / 6 mm wells / 10 mm depth so prompts like "96-well plate" just work.
+- **`pipette_tip_rack`** (NEW enum) — two-plate rack with tip slots in the top plate, drain holes in the bottom, and corner posts. Defaults to 96 tips / 6.5 mm slots / 50 mm tall.
+- **`petri_dish_stand`** (NEW enum) — vertical four-pillar stand with side slots that hold round dishes. `well_count` is the number of dish slots; `diameter_mm` is the dish diameter (90 or 100 typical).
+
+Wired through every layer:
+- `PartType` enum gains the two new values.
+- Rule-based parser detects them with priority ordering (`pipette tip` checked before `tube rack` so "pipette tip rack" doesn't get misclassified).
+- `_apply_part_defaults` ships sensible defaults so under-specified prompts still produce something.
+- Validation rules added per-type with friendly clarification messages ("How wide are the wells in mm?").
+- `cad_generation.py` gains `_build_multi_well_mold`, `_build_pipette_tip_rack`, `_build_petri_dish_stand`.
+- OpenAI extraction system prompt updated with the new types' field-mapping guidance.
+
+Tests: 3 golden-spec CAD tests verify dimensions match the requested params. 3 parser tests verify natural-language detection (especially that "pipette tip rack" doesn't get caught by the generic tube-rack rule). Full backend suite: **76 tests passing** (was 70, +6).
+
 #### M8 — Polish + Deployment (was M7)
 
 Status: started.
