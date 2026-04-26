@@ -1,5 +1,19 @@
 # LabSmith
 
+## Hackathon Submission
+
+- **Team name:** Team Parts
+- **Team members:** Keith Curry and Akim Tarasov
+- **Track:** Autonomous Labs
+- **What we built:** LabSmith: automated fabrication, scheduling, and knowledge base.
+- **Datasets/APIs used:** OpenAI API
+- **How to run it from the repo root:**
+  ```bash
+  npm run setup
+  npm run frontend:dev
+  npm run backend:dev
+  ```
+
 LabSmith is a full-stack scaffold for LabForge AI: an autonomous design agent that turns natural-language laboratory hardware requests into structured CAD generation plans.
 
 The first implementation target is simple, parametric lab hardware such as tube racks, gel electrophoresis combs, pipette tip racks, and petri dish stands. The backend owns parsing, validation, CAD template selection, and future STL/STEP export. The frontend owns the interactive TypeScript user experience.
