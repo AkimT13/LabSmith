@@ -1,4 +1,4 @@
-"""Tests for the new app.main entry point (legacy routes preserved)."""
+"""Tests for the app.main entry point."""
 
 from app.main import app
 from fastapi.testclient import TestClient
@@ -6,34 +6,16 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
-def test_legacy_health_endpoint() -> None:
+def test_health_endpoint() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 
-def test_legacy_templates_endpoint() -> None:
-    response = client.get("/templates")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 2
-    part_types = {t["part_type"] for t in data}
-    assert part_types == {"tube_rack", "gel_comb"}
-
-
-def test_legacy_design_endpoint() -> None:
-    response = client.post(
-        "/design",
-        json={
-            "prompt": (
-                "Create a 4 x 6 tube rack with 11 mm diameter, "
-                "15 mm spacing, and 50 mm height"
-            )
-        },
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["part_request"]["part_type"] == "tube_rack"
+def test_scaffold_routes_are_not_exposed() -> None:
+    assert client.get("/templates").status_code == 404
+    assert client.post("/parse", json={"prompt": "Create a tube rack"}).status_code == 404
+    assert client.post("/design", json={"prompt": "Create a tube rack"}).status_code == 404
 
 
 def test_auth_me_requires_token() -> None:
@@ -50,6 +32,10 @@ def test_openapi_docs_include_v1_tag_metadata() -> None:
     assert "Server-Sent Events chat turns" in tags["chat"]
     assert "Authenticated artifact listing" in tags["artifacts"]
     assert "Lab-scoped onboarding documents" in tags["documents"]
+    assert "legacy" not in tags
     assert "/api/v1/sessions/{session_id}/chat" in schema["paths"]
     assert "/api/v1/artifacts/{artifact_id}/download" in schema["paths"]
     assert "/api/v1/labs/{lab_id}/documents" in schema["paths"]
+    assert "/templates" not in schema["paths"]
+    assert "/parse" not in schema["paths"]
+    assert "/design" not in schema["paths"]

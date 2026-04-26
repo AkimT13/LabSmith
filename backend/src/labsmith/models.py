@@ -23,16 +23,6 @@ class ValidationSeverity(str, Enum):
     WARNING = "warning"
 
 
-class ExportStatus(str, Enum):
-    PLANNED = "planned"
-    GENERATED = "generated"
-    BLOCKED = "blocked"
-
-
-class ParseRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, examples=["Create a 4 x 6 tube rack"])
-
-
 class PartRequest(BaseModel):
     part_type: PartType
     source_prompt: str | None = None
@@ -51,22 +41,6 @@ class PartRequest(BaseModel):
     def sync_well_count(self) -> PartRequest:
         if self.rows is not None and self.cols is not None and self.well_count is None:
             self.well_count = self.rows * self.cols
-        return self
-
-
-class ParseResponse(BaseModel):
-    part_request: PartRequest
-
-
-class DesignRequest(BaseModel):
-    prompt: str | None = Field(default=None, min_length=1)
-    part_request: PartRequest | None = None
-    formats: list[ExportFormat] = Field(default_factory=lambda: [ExportFormat.STL, ExportFormat.STEP])
-
-    @model_validator(mode="after")
-    def require_prompt_or_part_request(self) -> DesignRequest:
-        if self.prompt is None and self.part_request is None:
-            raise ValueError("Either prompt or part_request is required.")
         return self
 
 
@@ -92,21 +66,6 @@ class TemplateSpec(BaseModel):
     supported_formats: list[ExportFormat] = Field(
         default_factory=lambda: [ExportFormat.STL, ExportFormat.STEP]
     )
-
-
-class GeneratedFile(BaseModel):
-    format: ExportFormat
-    filename: str
-    status: ExportStatus
-    message: str
-
-
-class DesignResponse(BaseModel):
-    part_request: PartRequest
-    validation: list[ValidationIssue]
-    template: TemplateSpec
-    estimated_dimensions: EstimatedDimensions | None = None
-    exports: list[GeneratedFile]
 
 
 class HealthResponse(BaseModel):

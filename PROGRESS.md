@@ -6,8 +6,8 @@
 
 #### Backend Restructure
 - Created `backend/app/` as the new application layer alongside the existing `backend/src/labsmith/` CAD pipeline
-- **Entry point**: `backend/app/main.py` → `app.main:app` (replaces old `labsmith.main:app`)
-- **Legacy routes preserved**: `/health`, `/templates`, `/parse`, `/design` all work via `app/routers/legacy.py`
+- **Entry point**: `backend/app/main.py` → `app.main:app`
+- **Root compatibility route**: `/health` remains available. The old scaffold routes `/templates`, `/parse`, and `/design` are no longer exposed by the product API.
 - **New v1 routes**: `/api/v1/auth/me`, `/api/v1/auth/webhook`
 - Global exception handler ensures all errors (including unhandled) return JSON with CORS headers
 - Config via `pydantic-settings` in `app/config.py` — reads from `backend/.env` with `LABSMITH_` prefix
@@ -50,7 +50,7 @@
 
 #### Tests
 - **17 tests passing** — 13 original CAD pipeline tests + 4 new app tests
-- `test_app.py` verifies legacy routes work through new main.py and auth returns 401 without token
+- `test_app.py` verifies `/health`, v1 OpenAPI metadata, removal of old scaffold routes, and auth returns 401 without token
 - Frontend checks verified with `npm --prefix frontend run lint` and `npm --prefix frontend run build`
 
 #### Repo Hygiene
@@ -81,7 +81,7 @@ backend/
       artifact.py        # Artifact + ArtifactType enum
     routers/
       auth.py            # GET /api/v1/auth/me, POST /api/v1/auth/webhook
-      legacy.py          # /health, /templates, /parse, /design
+      chat.py            # authenticated session chat endpoint
     schemas/
       auth.py            # UserResponse pydantic model
   src/labsmith/          # Original CAD pipeline (unchanged)
@@ -96,7 +96,7 @@ backend/
       0975421fbff3_initial_schema.py
   tests/
     test_api.py          # Legacy API tests
-    test_app.py          # New app tests (legacy routes + auth 401)
+    test_app.py          # App tests (/health, v1 metadata, auth 401)
     test_parser.py       # Parser unit tests
     test_templates.py    # Template registry tests
     test_validation.py   # Validation rule tests
@@ -403,7 +403,7 @@ The backend is ready for the frontend to develop against. Mock mode is on by def
   - `MessageResponse` uses `validation_alias="metadata_"` so the ORM's `metadata_` attribute (renamed to dodge SQLAlchemy's reserved name) maps cleanly to `metadata` on the wire.
 - **Mock mode** (`LABSMITH_CHAT_MOCK=true`, default `True`):
   - Canned assistant text streamed as 5 chunks with `asyncio.sleep(0.15)` between deltas
-  - Rule-based parser produces a real `PartRequest` from the user prompt — same parser used by the legacy `/design` endpoint, so spec extraction is honest even in mock mode
+  - Rule-based parser produces a real `PartRequest` from the user prompt, so spec extraction is honest even in mock mode
   - Validation issues come from the existing `validate_part_request`
   - "Generation" is a 0.4s sleep + an `Artifact` row with `file_path=None` and `file_size_bytes=12345` (fake). M5 will write real STL bytes.
   - Versioning: each `generation_complete` increments `Artifact.version` per session.
@@ -673,21 +673,20 @@ Restart the backend. No code changes needed; the agent picks up the new provider
 
 ### Part type expansion (shipped alongside M7)
 
-Bumped the part-type catalog from 2 to 5 supported types. With the M7 LLM extractor, each new type becomes accessible via natural language for free — no parser code per type, just a CadQuery builder + JSON schema entry + validation rules.
+The supported part-type catalog now includes pipette tip racks and petri dish stands. With the M7 LLM extractor, each type is accessible through natural language via the same structured spec contract.
 
-- **`multi_well_mold`** (was declared but unbuilt) — flat plate with a grid of recessed cylindrical wells. Defaults to SBS-standard 8×12 / 9 mm spacing / 6 mm wells / 10 mm depth so prompts like "96-well plate" just work.
-- **`pipette_tip_rack`** (NEW enum) — two-plate rack with tip slots in the top plate, drain holes in the bottom, and corner posts. Defaults to 96 tips / 6.5 mm slots / 50 mm tall.
-- **`petri_dish_stand`** (NEW enum) — vertical four-pillar stand with side slots that hold round dishes. `well_count` is the number of dish slots; `diameter_mm` is the dish diameter (90 or 100 typical).
+- **`pipette_tip_rack`** — two-plate rack with tip slots in the top plate, drain holes in the bottom, and corner posts. Defaults to 96 tips / 6.5 mm slots / 50 mm tall.
+- **`petri_dish_stand`** — vertical four-pillar stand with side slots that hold round dishes. `well_count` is the number of dish slots; `diameter_mm` is the dish diameter (90 or 100 typical).
 
 Wired through every layer:
-- `PartType` enum gains the two new values.
-- Rule-based parser detects them with priority ordering (`pipette tip` checked before `tube rack` so "pipette tip rack" doesn't get misclassified).
+- `PartType` enum includes the supported generated values.
+- Rule-based parser detects pipette tip racks with priority ordering (`pipette tip` checked before `tube rack` so "pipette tip rack" doesn't get misclassified).
 - `_apply_part_defaults` ships sensible defaults so under-specified prompts still produce something.
-- Validation rules added per-type with friendly clarification messages ("How wide are the wells in mm?").
-- `cad_generation.py` gains `_build_multi_well_mold`, `_build_pipette_tip_rack`, `_build_petri_dish_stand`.
-- OpenAI extraction system prompt updated with the new types' field-mapping guidance.
+- Validation rules added per-type with friendly clarification messages.
+- `cad_generation.py` includes builders for tube racks, gel combs, pipette tip racks, and petri dish stands.
+- OpenAI extraction system prompt updated with the supported types' field-mapping guidance.
 
-Tests: 3 golden-spec CAD tests verify dimensions match the requested params. 3 parser tests verify natural-language detection (especially that "pipette tip rack" doesn't get caught by the generic tube-rack rule). Full backend suite: **76 tests passing** (was 70, +6).
+Tests cover golden-spec CAD dimensions and natural-language detection, especially that "pipette tip rack" doesn't get caught by the generic tube-rack rule.
 
 #### M8 — Polish + Deployment (was M7)
 

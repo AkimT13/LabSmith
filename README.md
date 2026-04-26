@@ -9,12 +9,11 @@ The first implementation target is simple, parametric lab hardware such as tube 
 ```text
 .
 ├── backend/
+│   ├── app/                 # FastAPI app, routers, services, persistence
 │   ├── src/labsmith/
-│   │   ├── export/          # STL/STEP export boundary
 │   │   ├── parser/          # Prompt-to-parameters adapters
-│   │   ├── templates/       # Parametric CAD template registry
+│   │   ├── templates/       # Parametric CAD template metadata
 │   │   ├── validation/      # Manufacturability checks
-│   │   ├── main.py          # FastAPI app
 │   │   └── models.py        # API/domain models
 │   └── tests/
 ├── frontend/
@@ -39,7 +38,7 @@ User prompt
   -> persisted/downloadable artifacts
 ```
 
-CadQuery integration is isolated behind `backend/app/services/cad_generation.py` and the parametric templates under `backend/src/labsmith/templates/`. The current artifact path produces STL files for supported part-design sessions.
+CadQuery integration is isolated behind `backend/app/services/cad_generation.py`. Shared parser, validation, and domain models live under `backend/src/labsmith/`. The current artifact path produces STL files for supported part-design sessions.
 
 ## Local setup
 
@@ -59,9 +58,11 @@ Use `npm run backend:dev:reload` when your environment supports file watching.
 Useful endpoints:
 
 - `GET /health`
-- `GET /templates`
-- `POST /parse`
-- `POST /design`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/labs`
+- `POST /api/v1/projects/{project_id}/sessions`
+- `POST /api/v1/sessions/{session_id}/chat`
+- `GET /api/v1/sessions/{session_id}/artifacts`
 
 ### Frontend
 
