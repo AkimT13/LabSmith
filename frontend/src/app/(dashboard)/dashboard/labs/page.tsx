@@ -53,6 +53,7 @@ import {
   type LabRole,
   type Project,
   type SessionStatus,
+  type SessionType,
   type UserProfile,
 } from "@/lib/api";
 import { emitDataChanged, useDataChangedListener } from "@/lib/data-events";
@@ -350,6 +351,7 @@ function LabsWorkspace() {
   // Session actions
   async function handleSubmitSession(values: {
     title: string;
+    session_type: SessionType;
     part_type: string;
     status?: SessionStatus;
   }) {
@@ -360,12 +362,14 @@ function LabsWorkspace() {
       await withToken((token) =>
         createSession(token, selectedProject.id, {
           title: values.title,
+          session_type: values.session_type,
           part_type: values.part_type || null,
         }),
       );
       emitDataChanged();
       router.push(projectWorkspaceHref(selectedLab.id, selectedProject.id));
     } else {
+      // session_type is immutable on the backend — don't send it on PATCH.
       const target = sessionDialog.session;
       await withToken((token) =>
         updateSession(token, target.id, {
@@ -937,17 +941,19 @@ function LabsWorkspace() {
         <SessionFormDialog
           open={Boolean(sessionDialog)}
           onOpenChange={(open) => !open && setSessionDialog(null)}
-          title={sessionDialog.kind === "create" ? "Create design session" : "Edit session"}
+          title={sessionDialog.kind === "create" ? "Create session" : "Edit session"}
           submitLabel={sessionDialog.kind === "create" ? "Create session" : "Save changes"}
           initialValues={
             sessionDialog.kind === "edit"
               ? {
                   title: sessionDialog.session.title,
+                  session_type: sessionDialog.session.session_type,
                   part_type: sessionDialog.session.part_type ?? "",
                   status: sessionDialog.session.status,
                 }
               : undefined
           }
+          showSessionType={sessionDialog.kind === "create"}
           showStatus={sessionDialog.kind === "edit"}
           onSubmit={handleSubmitSession}
         />

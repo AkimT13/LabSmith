@@ -43,6 +43,7 @@ async def create_session(
         project_id=project.id,
         title=data.title.strip(),
         status=SessionStatus.ACTIVE,
+        session_type=data.session_type,
         part_type=data.part_type,
         current_spec=data.current_spec,
         created_by=user.id,

@@ -90,6 +90,7 @@ export interface UserProfile {
 
 export type LabRole = "owner" | "admin" | "member" | "viewer";
 export type SessionStatus = "active" | "completed" | "archived";
+export type SessionType = "part_design" | "onboarding";
 export type MessageRole = "user" | "assistant" | "system";
 export type ArtifactType = "stl" | "step" | "spec_json" | "validation_json";
 export type PartType =
@@ -137,6 +138,7 @@ export interface DesignSession {
   project_id: string;
   title: string;
   status: SessionStatus;
+  session_type: SessionType;
   part_type: string | null;
   current_spec: Record<string, unknown> | null;
   created_by: string;
@@ -301,7 +303,12 @@ export async function postChat(
 export function createSession(
   token: string,
   projectId: string,
-  data: { title: string; part_type?: string | null; current_spec?: Record<string, unknown> | null },
+  data: {
+    title: string;
+    session_type?: SessionType;
+    part_type?: string | null;
+    current_spec?: Record<string, unknown> | null;
+  },
 ): Promise<DesignSession> {
   return apiFetch<DesignSession>(`/api/v1/projects/${projectId}/sessions`, {
     method: "POST",
