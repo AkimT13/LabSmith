@@ -47,5 +47,36 @@ class Settings(BaseSettings):
     missing. Tests should override this to a tmp dir to avoid cross-test
     pollution."""
 
+    # LLM / M7 — Smart parsing & iterative refinement
+    chat_llm_provider: str = "mock"
+    """Which provider produces the assistant's reply text. "mock" emits a canned
+    response with no network calls (default — safe for tests). "openai" streams
+    via the OpenAI Chat Completions API and requires `openai_api_key`."""
+
+    spec_extractor: str = "rule_based"
+    """Which extractor populates `PartRequest` from a user prompt. "rule_based"
+    (default) uses the regex parser from `labsmith.parser`. "openai" uses an
+    OpenAI structured-output call that also reads conversation history and the
+    session's `current_spec`, enabling iterative refinement ("make the wells
+    deeper"). On any failure the OpenAI extractor falls back to rule-based, so
+    setting this never crashes a chat turn."""
+
+    openai_api_key: str = ""
+    """Required when `chat_llm_provider=openai` or `spec_extractor=openai`.
+    Stored as a Bearer token; never logged."""
+
+    openai_chat_model: str = "gpt-4o-mini"
+    openai_extraction_model: str = "gpt-4o-mini"
+
+    openai_chat_system_prompt: str = (
+        "You are LabSmith, an assistant for designing 3D-printable laboratory "
+        "hardware (tube racks, gel combs, etc.). The user describes a part "
+        "they want; reply in 2-3 short conversational sentences acknowledging "
+        "what you understood and any obvious assumptions. A separate parser "
+        "extracts numeric parameters — DO NOT include JSON, code, or specific "
+        "numbers in your reply unless the user explicitly asked. Keep it warm "
+        "and brief."
+    )
+
 
 settings = Settings()
