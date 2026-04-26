@@ -76,3 +76,84 @@ async def test_gel_comb_generates_real_stl_with_requested_dimensions() -> None:
     assert_close(bounds.width, 84.0)
     assert_close(bounds.depth, 3.5)
     assert_close(bounds.height, 12.0)
+
+
+# ---------------------------------------------------------------------------
+# New M9 part types — multi-well mold, pipette tip rack, petri dish stand
+# ---------------------------------------------------------------------------
+
+
+async def test_multi_well_mold_generates_real_stl() -> None:
+    """8x12 SBS-format well plate with 6mm wells, 9mm spacing, 10mm depth.
+    Plate width = (12-1)*9 + 6 + 2*plate_margin. plate_margin = max(6, 5) = 6 → 117.
+    Plate depth = (8-1)*9 + 6 + 12 = 81. Plate thickness = 10 + 3 = 13.
+    """
+    request = PartRequest(
+        part_type=PartType.MULTI_WELL_MOLD,
+        rows=8,
+        cols=12,
+        well_count=96,
+        diameter_mm=6.0,
+        depth_mm=10.0,
+        spacing_mm=9.0,
+    )
+
+    artifacts = await generate_cad_artifacts(request)
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.artifact_type == ArtifactType.STL
+
+    bounds = assert_valid_stl(artifact.data)
+    assert_close(bounds.width, 117.0)
+    assert_close(bounds.depth, 81.0)
+    assert_close(bounds.height, 13.0)
+
+
+async def test_pipette_tip_rack_generates_real_stl() -> None:
+    """Standard 96-tip rack: 8x12, 6.5mm slots, 9mm spacing, 50mm tall.
+    Width = 11*9 + 6.5 + 2*max(5, 4.75) = 99 + 6.5 + 10 = 115.5.
+    Depth = 7*9 + 6.5 + 10 = 79.5.
+    """
+    request = PartRequest(
+        part_type=PartType.PIPETTE_TIP_RACK,
+        rows=8,
+        cols=12,
+        well_count=96,
+        diameter_mm=6.5,
+        spacing_mm=9.0,
+        depth_mm=50.0,
+    )
+
+    artifacts = await generate_cad_artifacts(request)
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.artifact_type == ArtifactType.STL
+
+    bounds = assert_valid_stl(artifact.data)
+    assert_close(bounds.width, 115.5)
+    assert_close(bounds.depth, 79.5)
+    assert_close(bounds.height, 50.0)
+
+
+async def test_petri_dish_stand_generates_real_stl() -> None:
+    """5-slot stand for 90mm petri dishes, 100mm tall.
+    Footprint = 90 + 12 = 102. Total height = 100.
+    """
+    request = PartRequest(
+        part_type=PartType.PETRI_DISH_STAND,
+        well_count=5,
+        diameter_mm=90.0,
+        depth_mm=100.0,
+    )
+
+    artifacts = await generate_cad_artifacts(request)
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.artifact_type == ArtifactType.STL
+
+    bounds = assert_valid_stl(artifact.data)
+    # Footprint can extend slightly past the nominal 102mm because the corner
+    # pillar notches push outward — give it a wider tolerance than the others.
+    assert_close(bounds.width, 102.0, tolerance=4.0)
+    assert_close(bounds.depth, 102.0, tolerance=4.0)
+    assert_close(bounds.height, 100.0)

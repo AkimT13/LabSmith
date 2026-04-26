@@ -100,13 +100,24 @@ class RuleBasedParser:
         return self._apply_part_defaults(request)
 
     def _detect_part_type(self, text: str) -> PartType:
+        # Check more specific patterns first so "pipette tip rack" doesn't
+        # match the generic tube_rack rule.
+        if "pipette tip" in text or "tip rack" in text or "tip box" in text:
+            return PartType.PIPETTE_TIP_RACK
+        if "petri" in text:
+            return PartType.PETRI_DISH_STAND
         if "tube rack" in text or ("rack" in text and "tube" in text):
             return PartType.TUBE_RACK
         if "gel" in text and "comb" in text:
             return PartType.GEL_COMB
         if "microfluidic" in text:
             return PartType.MICROFLUIDIC_CHANNEL_MOLD
-        if "multi-well" in text or "multiwell" in text:
+        if (
+            "multi-well" in text
+            or "multiwell" in text
+            or "well plate" in text
+            or "well-plate" in text
+        ):
             return PartType.MULTI_WELL_MOLD
         raise ValueError("Could not identify a supported lab part type from the prompt.")
 
@@ -172,4 +183,45 @@ class RuleBasedParser:
             if request.depth_mm is None:
                 request.depth_mm = 8.0
                 request.notes.append("Defaulted gel comb tooth depth to 8.0 mm.")
+        if request.part_type == PartType.MULTI_WELL_MOLD:
+            if request.rows is None or request.cols is None:
+                request.rows = request.rows or 8
+                request.cols = request.cols or 12
+                request.well_count = request.rows * request.cols
+                request.notes.append("Defaulted well plate to standard 8 x 12 (96-well).")
+            if request.diameter_mm is None:
+                request.diameter_mm = 6.0
+                request.notes.append("Defaulted well diameter to 6.0 mm.")
+            if request.depth_mm is None:
+                request.depth_mm = 10.0
+                request.notes.append("Defaulted well depth to 10.0 mm.")
+            if request.spacing_mm is None:
+                request.spacing_mm = 9.0
+                request.notes.append("Defaulted well spacing to 9.0 mm (SBS standard).")
+        if request.part_type == PartType.PIPETTE_TIP_RACK:
+            if request.rows is None or request.cols is None:
+                request.rows = request.rows or 8
+                request.cols = request.cols or 12
+                request.well_count = request.rows * request.cols
+                request.notes.append("Defaulted pipette tip rack to 8 x 12 (96 tips).")
+            if request.diameter_mm is None:
+                request.diameter_mm = 6.5
+                request.notes.append("Defaulted tip slot diameter to 6.5 mm (200 uL tip).")
+            if request.depth_mm is None:
+                request.depth_mm = 50.0
+                request.notes.append("Defaulted tip rack height to 50.0 mm.")
+            if request.spacing_mm is None:
+                request.spacing_mm = 9.0
+                request.notes.append("Defaulted tip spacing to 9.0 mm (SBS standard).")
+        if request.part_type == PartType.PETRI_DISH_STAND:
+            if request.well_count is None:
+                request.well_count = 5
+                request.notes.append("Defaulted to a 5-slot stand.")
+            if request.diameter_mm is None:
+                request.diameter_mm = 90.0
+                request.notes.append("Defaulted dish diameter to 90.0 mm (standard).")
+            if request.depth_mm is None:
+                # depth_mm here is the total stand height (well_count * slot_height + base)
+                request.depth_mm = 100.0
+                request.notes.append("Defaulted stand height to 100.0 mm.")
         return request
