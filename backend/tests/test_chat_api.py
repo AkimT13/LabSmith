@@ -34,7 +34,7 @@ async def test_chat_emits_full_event_sequence_for_valid_prompt() -> None:
         events = await _post_chat(
             client,
             session_id,
-            "Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing",
+            "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing",
         )
 
         event_types = [e["event"] for e in events]
@@ -51,7 +51,7 @@ async def test_chat_emits_full_event_sequence_for_valid_prompt() -> None:
 
         # spec_parsed payload includes a part_request.
         spec_event = next(e for e in events if e["event"] == "spec_parsed")
-        assert spec_event["data"]["part_request"]["part_type"] == "tma_mold"
+        assert spec_event["data"]["part_request"]["part_type"] == "tube_rack"
 
         # generation_complete payload includes an artifact_id.
         gen_event = next(e for e in events if e["event"] == "generation_complete")

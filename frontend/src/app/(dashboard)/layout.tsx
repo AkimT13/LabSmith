@@ -34,7 +34,7 @@ export default function DashboardLayout({
             <span className="font-semibold">LabSmith</span>
           </div>
           <div className="ml-auto">
-            <UserButton afterSignOutUrl="/" />
+            <UserButton />
           </div>
         </header>
 

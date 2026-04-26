@@ -120,7 +120,7 @@ If the turn fails, an `error` event is sent and the stream closes.
 |-------|------|---------|
 | `text_delta` | new chunk of assistant text from the LLM | `{ "message_id": "uuid", "delta": "string" }` |
 | `spec_parsed` | LLM finished extracting a `PartRequest` from the prompt | `{ "part_request": PartRequest, "validation": ValidationIssue[] }` |
-| `generation_started` | CAD pipeline kicked off (after spec passes validation) | `{ "template": "tma_mold" \| "tube_rack" \| "gel_comb" }` |
+| `generation_started` | CAD pipeline kicked off (after spec passes validation) | `{ "template": "tube_rack" \| "gel_comb" }` |
 | `generation_complete` | artifact saved, 3D ready | `{ "artifact_id": "uuid", "artifact_type": "stl", "file_size_bytes": 12345, "version": 1 }` |
 | `message_complete` | assistant message persisted, stream closing | `{ "message_id": "uuid", "content": "string" }` |
 | `error` | fatal error; stream closes after | `{ "code": "string", "detail": "string" }` |
@@ -148,7 +148,6 @@ Already defined in `backend/src/labsmith/models.py` (Pydantic). Mirror in `front
 
 ```ts
 export type PartType =
-  | "tma_mold"
   | "tube_rack"
   | "gel_comb"
   | "multi_well_mold"

@@ -93,7 +93,6 @@ export type SessionStatus = "active" | "completed" | "archived";
 export type MessageRole = "user" | "assistant" | "system";
 export type ArtifactType = "stl" | "step" | "spec_json" | "validation_json";
 export type PartType =
-  | "tma_mold"
   | "tube_rack"
   | "gel_comb"
   | "multi_well_mold"

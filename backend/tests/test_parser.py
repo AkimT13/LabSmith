@@ -2,20 +2,17 @@ from labsmith.models import PartType
 from labsmith.parser import RuleBasedParser
 
 
-def test_parser_extracts_tma_mold_parameters() -> None:
+def test_parser_extracts_tube_rack_parameters() -> None:
     parser = RuleBasedParser()
 
-    result = parser.parse(
-        "Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing"
-    )
+    result = parser.parse("Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing")
 
-    assert result.part_type == PartType.TMA_MOLD
-    assert result.rows == 8
-    assert result.cols == 12
-    assert result.well_count == 96
-    assert result.diameter_mm == 1.0
-    assert result.spacing_mm == 2.0
-    assert result.depth_mm == 3.0
+    assert result.part_type == PartType.TUBE_RACK
+    assert result.rows == 4
+    assert result.cols == 6
+    assert result.well_count == 24
+    assert result.diameter_mm == 11.0
+    assert result.spacing_mm == 15.0
 
 
 def test_parser_extracts_tube_rack_defaults_from_volume() -> None:

@@ -3,12 +3,10 @@ from __future__ import annotations
 from labsmith.models import PartType
 from labsmith.templates.base import PartTemplate
 from labsmith.templates.gel_comb import GelCombTemplate
-from labsmith.templates.tma_mold import TmaMoldTemplate
 from labsmith.templates.tube_rack import TubeRackTemplate
 
 
 _TEMPLATES: dict[PartType, PartTemplate] = {
-    PartType.TMA_MOLD: TmaMoldTemplate(),
     PartType.TUBE_RACK: TubeRackTemplate(),
     PartType.GEL_COMB: GelCombTemplate(),
 }

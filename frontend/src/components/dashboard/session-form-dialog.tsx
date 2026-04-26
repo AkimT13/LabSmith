@@ -133,7 +133,7 @@ function SessionFormBody({
           className={INPUT_CLASS}
           value={partType}
           onChange={(event) => setPartType(event.target.value)}
-          placeholder="e.g. tma_mold, tube_rack"
+          placeholder="e.g. tube_rack, gel_comb"
         />
       </div>
 

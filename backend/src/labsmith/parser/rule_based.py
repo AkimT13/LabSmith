@@ -37,6 +37,8 @@ class RuleBasedParser:
 
         request.well_count = self._extract_count(normalized, "well")
         request.rows, request.cols = self._extract_grid(normalized, request.well_count)
+        if request.rows is not None and request.cols is not None and request.well_count is None:
+            request.well_count = request.rows * request.cols
         request.diameter_mm = self._extract_dimension(normalized, "diameter")
         request.spacing_mm = self._extract_dimension(normalized, "spacing")
         request.depth_mm = self._extract_dimension(normalized, "depth")
@@ -47,8 +49,6 @@ class RuleBasedParser:
         return self._apply_part_defaults(request)
 
     def _detect_part_type(self, text: str) -> PartType:
-        if "tma" in text or "tissue microarray" in text:
-            return PartType.TMA_MOLD
         if "tube rack" in text or ("rack" in text and "tube" in text):
             return PartType.TUBE_RACK
         if "gel" in text and "comb" in text:
@@ -95,10 +95,6 @@ class RuleBasedParser:
         return float(match.group(1)) if match else None
 
     def _apply_part_defaults(self, request: PartRequest) -> PartRequest:
-        if request.part_type == PartType.TMA_MOLD:
-            if request.depth_mm is None:
-                request.depth_mm = 3.0
-                request.notes.append("Defaulted mold depth to 3.0 mm.")
         if request.part_type == PartType.TUBE_RACK:
             if request.tube_volume_ml and request.diameter_mm is None:
                 request.diameter_mm = TUBE_DIAMETER_BY_VOLUME_ML.get(request.tube_volume_ml)

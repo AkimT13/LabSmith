@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { ArrowLeft, Box, FolderKanban, FlaskConical, Rows3 } from "lucide-react";
+import { ArrowLeft, FolderKanban, FlaskConical, Rows3 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { ArtifactList } from "@/components/sessions/artifact-list";
 import { ChatPanel } from "@/components/sessions/chat-panel";
+import { ViewerPanel } from "@/components/sessions/viewer-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -121,6 +122,8 @@ export default function SessionDetailPage() {
   }
 
   const projectHref = `/dashboard/labs?lab=${lab.id}&project=${project.id}`;
+  const previewArtifact =
+    artifacts.find((artifact) => artifact.artifact_type === "stl" && artifact.preview_url) ?? null;
 
   return (
     <div className="space-y-6">
@@ -231,19 +234,7 @@ export default function SessionDetailPage() {
             onRefresh={loadArtifacts}
           />
 
-          <Card className="min-h-[360px]">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Box className="h-4 w-4" />
-                Viewer
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex min-h-[260px] items-center justify-center rounded-md border border-dashed bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-                3D preview loads here in M4.
-              </div>
-            </CardContent>
-          </Card>
+          <ViewerPanel artifact={previewArtifact} loadingArtifacts={artifactsLoading} />
         </div>
       </div>
     </div>

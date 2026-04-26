@@ -6,7 +6,6 @@ Build an MVP that converts natural-language requests for simple lab hardware int
 
 The first target is **simple, high-value, parametric lab parts** such as:
 
-* tissue microarray molds
 * tube racks
 * gel electrophoresis combs
 * simple multi-well molds
@@ -110,24 +109,20 @@ labsmith/
 │  └─ prompts.py
 ├─ schemas/
 │  ├─ common.py
-│  ├─ tma_mold.py
 │  ├─ tube_rack.py
 │  └─ gel_comb.py
 ├─ templates/
 │  ├─ registry.py
-│  ├─ tma_mold.py
 │  ├─ tube_rack.py
 │  └─ gel_comb.py
 ├─ validators/
 │  ├─ common.py
-│  ├─ tma_mold.py
 │  ├─ tube_rack.py
 │  └─ gel_comb.py
 ├─ export/
 │  ├─ stl.py
 │  └─ step.py
 ├─ examples/
-│  ├─ tma_request.json
 │  ├─ tube_rack_request.json
 │  └─ gel_comb_request.json
 ├─ output/
@@ -151,33 +146,9 @@ Define a normalized JSON contract between parser and CAD generator.
 
 ```json
 {
-  "part_type": "tma_mold",
+  "part_type": "tube_rack",
   "units": "mm",
   "parameters": {},
-  "constraints": {
-    "fabrication_method": "sla_print",
-    "material": "resin"
-  },
-  "notes": []
-}
-```
-
-### Example: tissue microarray mold
-
-```json
-{
-  "part_type": "tma_mold",
-  "units": "mm",
-  "parameters": {
-    "rows": 8,
-    "cols": 12,
-    "well_diameter": 1.0,
-    "well_depth": 3.0,
-    "well_spacing": 2.0,
-    "margin": 3.0,
-    "base_thickness": 5.0,
-    "corner_radius": 1.0
-  },
   "constraints": {
     "fabrication_method": "sla_print",
     "material": "resin"
@@ -209,6 +180,27 @@ Define a normalized JSON contract between parser and CAD generator.
 }
 ```
 
+### Example: gel comb
+
+```json
+{
+  "part_type": "gel_comb",
+  "units": "mm",
+  "parameters": {
+    "well_count": 10,
+    "well_width": 5.0,
+    "tooth_depth": 8.0,
+    "tooth_thickness": 1.5,
+    "spacing": 2.0
+  },
+  "constraints": {
+    "fabrication_method": "fdm_print",
+    "material": "pla"
+  },
+  "notes": []
+}
+```
+
 ---
 
 ## Template Strategy
@@ -223,23 +215,9 @@ Each supported part type should have:
 
 ### Initial templates to implement
 
-#### 1. TMA mold
+#### 1. Tube rack
 
 Why first:
-
-* directly tied to the motivating use case
-* highly parametric and grid-based
-* easy to explain in demos
-
-Suggested geometry:
-
-* rectangular base block
-* repeated cylindrical wells or pegs depending on mold convention
-* configurable array spacing and margins
-
-#### 2. Tube rack
-
-Why second:
 
 * simple geometry
 * broadly useful
@@ -250,9 +228,9 @@ Suggested geometry:
 * rectangular plate with repeated circular cutouts
 * optional feet or sidewalls
 
-#### 3. Gel comb
+#### 2. Gel comb
 
-Why third:
+Why second:
 
 * very simple
 * good for demonstrating slot arrays instead of holes
@@ -342,12 +320,6 @@ Use rule-based validation first. Avoid simulation in milestone 1.
 * dimensions are positive
 * total part envelope fits target build volume if specified
 
-#### TMA mold checks
-
-* wall thickness between adjacent wells exceeds minimum threshold
-* well depth does not exceed base thickness minus safety margin
-* spacing is sufficient for printability
-
 #### Tube rack checks
 
 * hole spacing leaves enough material between adjacent holes
@@ -404,7 +376,7 @@ A CLI is enough for the first milestone.
 ### Example command
 
 ```bash
-python -m app.cli "Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing"
+python -m app.cli "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing"
 ```
 
 ### Expected behavior
@@ -419,10 +391,10 @@ python -m app.cli "Create a tissue microarray mold with 96 wells, 1 mm diameter,
 ### Example console output
 
 ```text
-Part type: tma_mold
+Part type: tube_rack
 Status: generated with warnings
 Warnings:
-- well depth not specified; defaulted to 3.0 mm
+- rack height not specified; defaulted to 20.0 mm
 Output:
 - output/request_001/model.stl
 - output/request_001/spec.json
@@ -448,7 +420,6 @@ class BasePartSpec(BaseModel):
 
 ```python
 TEMPLATE_REGISTRY = {
-    "tma_mold": build_tma_mold,
     "tube_rack": build_tube_rack,
     "gel_comb": build_gel_comb,
 }
@@ -480,10 +451,10 @@ Each template file should expose one deterministic builder function.
 Example:
 
 ```python
-def build_tma_mold(spec: TMAMoldSpec):
-    # create base block
-    # pattern wells
-    # subtract or add features
+def build_tube_rack(spec: TubeRackSpec):
+    # create rack plate
+    # pattern tube openings
+    # add optional sidewalls or feet
     # return CadQuery solid
 ```
 
@@ -515,7 +486,6 @@ Maintain a few known-good JSON specs and verify they always build.
 
 Examples:
 
-* `8x12 tma mold`
 * `24-hole tube rack`
 * `10-tooth gel comb`
 

@@ -16,19 +16,19 @@ def test_legacy_templates_endpoint() -> None:
     response = client.get("/templates")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 3
+    assert len(data) == 2
     part_types = {t["part_type"] for t in data}
-    assert part_types == {"tma_mold", "tube_rack", "gel_comb"}
+    assert part_types == {"tube_rack", "gel_comb"}
 
 
 def test_legacy_design_endpoint() -> None:
     response = client.post(
         "/design",
-        json={"prompt": "Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing"},
+        json={"prompt": "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing"},
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["part_request"]["part_type"] == "tma_mold"
+    assert body["part_request"]["part_type"] == "tube_rack"
 
 
 def test_auth_me_requires_token() -> None:

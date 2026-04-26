@@ -86,7 +86,7 @@ backend/
       auth.py            # UserResponse pydantic model
   src/labsmith/          # Original CAD pipeline (unchanged)
     parser/              # RuleBasedParser
-    templates/           # TMA mold, tube rack, gel comb
+    templates/           # Tube rack and gel comb
     validation/          # Part request validation rules
     export/              # Export plan (stubs — no real CAD yet)
     models.py            # Pydantic domain models (PartRequest, etc.)
@@ -500,6 +500,34 @@ Full backend suite: **42 tests passing**.
 - After a `generation_complete` SSE event, the artifact list refresh already returns the new artifact with a populated `preview_url`. The `<StlViewer>` reload-on-event pattern from the contract works against today's backend.
 - `frontend/src/lib/api.ts` includes `fetchArtifactResponse()` for authenticated artifact byte requests and API-relative URL normalization via `buildApiUrl()`.
 - `frontend/src/components/sessions/artifact-list.tsx` now uses authenticated fetch for downloads and reads filenames from `Content-Disposition`.
+
+### M4 frontend — STL viewer + session-page integration — DONE
+
+The session page now renders authenticated STL previews from the M4 artifact endpoints. This keeps the frontend aligned with the contract's auth requirement: preview/download bytes are fetched with the Clerk Bearer token, not loaded through plain URLs.
+
+#### What shipped
+- Added Three.js viewer dependencies to the frontend workspace: `three`, `@types/three`, and `@react-three/fiber`.
+- Added `frontend/src/components/sessions/viewer-panel.tsx`:
+  - selects an STL artifact with `preview_url`
+  - fetches preview bytes with `fetchArtifactResponse()`
+  - sends `If-None-Match` when reloading the same artifact
+  - reuses cached geometry on `304 Not Modified`
+  - parses bytes with `STLLoader.parse(arrayBuffer)`
+  - handles empty, loading, error, and retry states
+- Added `frontend/src/components/sessions/stl-viewer.tsx`:
+  - renders the STL in a React Three Fiber `<Canvas>`
+  - recenters geometry, computes normals, adds lighting, grid, and orbit controls
+  - avoids `@react-three/drei` so the frontend does not inherit its Node 22 engine warning under the current Node 20 dev environment
+- Updated `/dashboard/sessions/[sessionId]` to replace the M2/M3 placeholder viewer card with the live `ViewerPanel`.
+- Changed the default frontend dev/build scripts to webpack (`next dev --webpack`, `next build --webpack`) after local dev showed a memory blow-up during Next.js 16.2.4 Turbopack route compilation. `turbopack.root` is scoped to the frontend app, and `npm --prefix frontend run dev:turbo` remains available for reproducing/debugging Turbopack specifically.
+- Updated the dashboard `UserButton` usage for the installed Clerk version by removing the stale `afterSignOutUrl` prop.
+
+#### Verification
+- `npm --prefix frontend run lint`
+- `npm --prefix frontend run build`
+
+#### Manual UI test still needed
+- Start backend + frontend, open a session, generate a mock part, and confirm the artifact list refreshes, the STL preview renders, orbit controls work, retry reloads cleanly, and download still saves the authenticated artifact.
 
 #### Open work for M4 backend (likely after frontend integrates)
 - Streaming response (`iter_bytes`) for large artifacts. Today the route reads the whole file into memory — fine for the placeholder cube (684 B) and small CadQuery output, but should switch when files exceed ~10MB.

@@ -30,7 +30,7 @@ async def test_download_returns_placeholder_stl_with_correct_headers() -> None:
     user = await _create_user("downloader")
 
     async with _client_as(user) as client:
-        artifact = await _generate_artifact(client, prompt=_TMA_PROMPT, lab_name="DL Lab")
+        artifact = await _generate_artifact(client, prompt=_ARTIFACT_PROMPT, lab_name="DL Lab")
 
         response = await client.get(f"/api/v1/artifacts/{artifact['id']}/download")
 
@@ -47,7 +47,7 @@ async def test_preview_returns_inline_bytes_with_etag() -> None:
     user = await _create_user("previewer")
 
     async with _client_as(user) as client:
-        artifact = await _generate_artifact(client, prompt=_TMA_PROMPT, lab_name="PV Lab")
+        artifact = await _generate_artifact(client, prompt=_ARTIFACT_PROMPT, lab_name="PV Lab")
 
         response = await client.get(f"/api/v1/artifacts/{artifact['id']}/preview")
 
@@ -67,7 +67,7 @@ async def test_preview_returns_304_on_matching_if_none_match() -> None:
     user = await _create_user("etag")
 
     async with _client_as(user) as client:
-        artifact = await _generate_artifact(client, prompt=_TMA_PROMPT, lab_name="ETag Lab")
+        artifact = await _generate_artifact(client, prompt=_ARTIFACT_PROMPT, lab_name="ETag Lab")
 
         first = await client.get(f"/api/v1/artifacts/{artifact['id']}/preview")
         etag = first.headers["etag"]
@@ -87,7 +87,7 @@ async def test_artifact_response_includes_download_and_preview_urls() -> None:
     user = await _create_user("urls")
 
     async with _client_as(user) as client:
-        artifact = await _generate_artifact(client, prompt=_TMA_PROMPT, lab_name="URL Lab")
+        artifact = await _generate_artifact(client, prompt=_ARTIFACT_PROMPT, lab_name="URL Lab")
 
         assert artifact["download_url"] == f"/api/v1/artifacts/{artifact['id']}/download"
         assert artifact["preview_url"] == f"/api/v1/artifacts/{artifact['id']}/preview"
@@ -100,7 +100,7 @@ async def test_preview_returns_415_for_non_stl_artifact() -> None:
     user = await _create_user("nonstl")
 
     async with _client_as(user) as client:
-        artifact = await _generate_artifact(client, prompt=_TMA_PROMPT, lab_name="STEP Lab")
+        artifact = await _generate_artifact(client, prompt=_ARTIFACT_PROMPT, lab_name="STEP Lab")
 
         async with async_session_factory() as db:
             result = await db.execute(
@@ -130,7 +130,7 @@ async def test_download_returns_403_for_non_member() -> None:
 
     async with _client_as(owner) as owner_client:
         artifact = await _generate_artifact(
-            owner_client, prompt=_TMA_PROMPT, lab_name="Private Lab"
+            owner_client, prompt=_ARTIFACT_PROMPT, lab_name="Private Lab"
         )
 
     async with _client_as(outsider) as outsider_client:
@@ -148,7 +148,7 @@ async def test_download_returns_403_for_non_member() -> None:
 # ---------------------------------------------------------------------------
 
 
-_TMA_PROMPT = "Create a tissue microarray mold with 96 wells, 1 mm diameter, 2 mm spacing"
+_ARTIFACT_PROMPT = "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing"
 
 
 async def _generate_artifact(

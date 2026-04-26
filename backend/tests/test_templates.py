@@ -7,25 +7,24 @@ from labsmith.templates import get_template, list_templates
 def test_template_registry_lists_initial_cad_templates() -> None:
     part_types = {template.spec.part_type for template in list_templates()}
 
-    assert part_types == {PartType.TMA_MOLD, PartType.TUBE_RACK, PartType.GEL_COMB}
+    assert part_types == {PartType.TUBE_RACK, PartType.GEL_COMB}
 
 
-def test_tma_template_estimates_dimensions() -> None:
-    template = get_template(PartType.TMA_MOLD)
+def test_tube_rack_template_estimates_dimensions() -> None:
+    template = get_template(PartType.TUBE_RACK)
     request = PartRequest(
-        part_type=PartType.TMA_MOLD,
-        rows=8,
-        cols=12,
-        diameter_mm=1.0,
-        spacing_mm=2.0,
-        depth_mm=3.0,
+        part_type=PartType.TUBE_RACK,
+        rows=4,
+        cols=6,
+        diameter_mm=11.0,
+        spacing_mm=15.0,
     )
 
     dimensions = template.estimate_dimensions(request)
 
-    assert dimensions.width_mm > 20
-    assert dimensions.depth_mm > 10
-    assert dimensions.height_mm == 5.0
+    assert dimensions.width_mm > 80
+    assert dimensions.depth_mm > 50
+    assert dimensions.height_mm == 20.0
 
 
 def test_unregistered_template_raises_key_error() -> None:

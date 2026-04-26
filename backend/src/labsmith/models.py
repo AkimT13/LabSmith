@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class PartType(str, Enum):
-    TMA_MOLD = "tma_mold"
     TUBE_RACK = "tube_rack"
     GEL_COMB = "gel_comb"
     MULTI_WELL_MOLD = "multi_well_mold"
@@ -30,7 +29,7 @@ class ExportStatus(str, Enum):
 
 
 class ParseRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, examples=["Create a 96-well TMA mold"])
+    prompt: str = Field(..., min_length=1, examples=["Create a 4 x 6 tube rack"])
 
 
 class PartRequest(BaseModel):

@@ -17,7 +17,6 @@ def has_errors(issues: list[ValidationIssue]) -> bool:
 
 def _validate_required(request: PartRequest) -> list[ValidationIssue]:
     required_by_part = {
-        PartType.TMA_MOLD: ["rows", "cols", "diameter_mm", "spacing_mm", "depth_mm"],
         PartType.TUBE_RACK: ["rows", "cols", "diameter_mm", "spacing_mm"],
         PartType.GEL_COMB: ["well_count", "well_width_mm", "well_height_mm", "depth_mm"],
     }
