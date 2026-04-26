@@ -147,8 +147,14 @@ _TOPICS: tuple[OnboardingTopic, ...] = (
             "help",
             "manager",
             "pi",
+            "role",
+            "roles",
+            "roster",
+            "team",
+            "members",
+            "people",
         ),
-        rationale="Matched ownership or contact language.",
+        rationale="Matched ownership, role, or contact language.",
         checklist=(
             ("Name the owner", "Identify the person responsible for the workflow or asset."),
             ("Clarify backup coverage", "Ask who can help when the owner is unavailable."),
@@ -338,8 +344,30 @@ class OnboardingAgent:
                 },
             }
 
-        async for event in _stream_text(assistant_message_id, content):
-            yield event
+        # If we retrieved real chunks AND the LLM provider is configured,
+        # synthesize a natural answer from the retrieved snippets instead of
+        # dumping the templated reply. The user gets "Daniel Okafor is the
+        # Lab Safety Officer" instead of "here's a snippet that contains it".
+        # Falls back to the templated reply on any LLM failure.
+        if citations and _llm_synthesis_available():
+            llm_text, llm_failed = await _collect_rag_synthesis_or_none(
+                user_content=user_content,
+                citations=citations,
+                lab_name=context.lab_name,
+            )
+            if llm_text and not llm_failed:
+                content = llm_text
+                assistant_msg.content = content
+                # Stream to the client in roughly chunk-shaped pieces so the
+                # UI's text_delta handler still sees a streaming reply.
+                async for event in _stream_text(assistant_message_id, content):
+                    yield event
+            else:
+                async for event in _stream_text(assistant_message_id, content):
+                    yield event
+        else:
+            async for event in _stream_text(assistant_message_id, content):
+                yield event
 
         yield {
             "event": "message_complete",
@@ -534,6 +562,83 @@ def _short_snippet(text: str, *, max_chars: int = 240) -> str:
 
 def _retriever_name() -> str:
     return (settings.onboarding_retriever or "lexical").lower()
+
+
+# ---------------------------------------------------------------------------
+# LLM synthesis (RAG) — turns retrieved snippets into a natural answer
+# ---------------------------------------------------------------------------
+
+
+_RAG_SYSTEM_PROMPT = (
+    "You are LabSmith, an onboarding assistant for the {lab_name} lab. "
+    "Answer the user's question using ONLY the provided lab document "
+    "snippets. Be direct: 1-3 sentences for factual lookups, more if the "
+    "question is procedural or open-ended. When you state a fact taken "
+    "from a document, mention the document in parentheses, e.g. "
+    "'(per Lab Roster)'. If the snippets don't contain the answer, say so "
+    "honestly and suggest who the user could ask. Don't invent contacts, "
+    "dates, room numbers, or procedures that aren't in the snippets."
+)
+
+
+def _llm_synthesis_available() -> bool:
+    """We do RAG synthesis only when the chat LLM provider is OpenAI AND a key
+    is configured. Mock providers can't generate a useful answer from arbitrary
+    document context."""
+    return (
+        (settings.chat_llm_provider or "").lower() == "openai"
+        and bool(settings.openai_api_key)
+    )
+
+
+async def _collect_rag_synthesis_or_none(
+    *,
+    user_content: str,
+    citations: Sequence[_Citation],
+    lab_name: str,
+) -> tuple[str | None, bool]:
+    """Run an OpenAI chat completion that synthesizes an answer from the
+    retrieved citation snippets. Returns (text, failed) — `failed` is True
+    if anything went wrong, in which case the caller should fall back to the
+    templated reply.
+
+    Non-streaming because the agent already streams the assembled text via
+    `_stream_text` for visual consistency with the templated path. Synthesis
+    is fast enough that the user-perceived delay is fine.
+    """
+    try:
+        from openai import AsyncOpenAI
+    except ImportError:
+        logger.warning("openai package not installed; skipping RAG synthesis")
+        return None, True
+
+    context_blocks = "\n\n".join(
+        f"### {c.title}\n{c.snippet}" for c in citations
+    )
+    messages = [
+        {"role": "system", "content": _RAG_SYSTEM_PROMPT.format(lab_name=lab_name)},
+        {
+            "role": "system",
+            "content": f"Lab document snippets retrieved for this question:\n\n{context_blocks}",
+        },
+        {"role": "user", "content": user_content},
+    ]
+
+    try:
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        response = await client.chat.completions.create(
+            model=settings.openai_chat_model,
+            messages=messages,
+        )
+        if not response.choices:
+            return None, True
+        text = response.choices[0].message.content
+        if not text or not text.strip():
+            return None, True
+        return text.strip(), False
+    except Exception as exc:
+        logger.warning("RAG synthesis failed (%s); falling back to templated reply", exc)
+        return None, True
 
 
 # ---------------------------------------------------------------------------
