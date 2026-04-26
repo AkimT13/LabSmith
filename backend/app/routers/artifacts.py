@@ -144,8 +144,8 @@ async def _read_artifact_bytes(artifact: Artifact) -> tuple[bytes, str]:
     """Read the artifact bytes from storage.
 
     404 if the row has no file_path or the bytes are missing on disk — both
-    indicate the artifact has no downloadable content (mock generation that
-    didn't write bytes, manual cleanup, etc.).
+    indicate the artifact has no downloadable content (generation failure,
+    manual cleanup, etc.).
     """
     if artifact.file_path is None:
         raise HTTPException(status_code=404, detail="Artifact has no stored bytes")

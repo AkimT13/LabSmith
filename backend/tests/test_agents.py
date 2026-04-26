@@ -118,7 +118,7 @@ async def test_part_design_chat_emits_full_event_sequence() -> None:
         events = await _post_chat(
             client,
             session["id"],
-            "Create a tube rack 4x6 with 11mm diameter and 15mm spacing",
+            "Create a tube rack 4x6 with 11mm diameter, 15mm spacing, and 50mm height",
         )
         types = [e["event"] for e in events]
 

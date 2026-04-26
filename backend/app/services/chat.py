@@ -95,6 +95,7 @@ async def stream_chat_turn(
         ):
             yield event
     except Exception as exc:  # noqa: BLE001 — convert to error event
+        await db.rollback()
         logger.exception(
             "Agent %s failed on session %s: %s",
             type(agent).__name__,

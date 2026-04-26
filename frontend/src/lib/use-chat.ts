@@ -24,6 +24,7 @@ export interface GenerationState {
 
 interface UseChatOptions {
   sessionId: string;
+  initialSpec?: PartRequest | null;
   onArtifactGenerated?: () => void | Promise<void>;
 }
 
@@ -63,11 +64,11 @@ interface ErrorPayload {
   detail: string;
 }
 
-export function useChat({ sessionId, onArtifactGenerated }: UseChatOptions) {
+export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: UseChatOptions) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentSpec, setCurrentSpec] = useState<PartRequest | null>(null);
+  const [currentSpec, setCurrentSpec] = useState<PartRequest | null>(initialSpec);
   const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
   const [generation, setGeneration] = useState<GenerationState>({ status: "idle" });
   const [isLoading, setIsLoading] = useState(true);
@@ -187,8 +188,6 @@ export function useChat({ sessionId, onArtifactGenerated }: UseChatOptions) {
       abortRef.current = abortController;
 
       setMessages((previous) => [...previous, optimisticMessage]);
-      setCurrentSpec(null);
-      setValidationIssues([]);
       setGeneration({ status: "idle" });
       setError(null);
       setIsStreaming(true);

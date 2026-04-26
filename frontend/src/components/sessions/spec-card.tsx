@@ -45,7 +45,7 @@ export function SpecCard({ spec, validationIssues, generation }: SpecCardProps) 
           {visibleFields.map(({ key, label, suffix }) => (
             <SpecRow
               key={key}
-              label={label}
+              label={formatSpecLabel(spec, key, label)}
               value={`${spec[key]}${suffix ? ` ${suffix}` : ""}`}
             />
           ))}
@@ -109,6 +109,14 @@ function SpecRow({ label, value }: { label: string; value: string }) {
       <p className="mt-1 break-words text-sm font-medium">{value}</p>
     </div>
   );
+}
+
+function formatSpecLabel(spec: PartRequest, key: keyof PartRequest, fallback: string) {
+  if (spec.part_type === "tube_rack") {
+    if (key === "diameter_mm") return "Tube diameter";
+    if (key === "depth_mm") return "Tube height";
+  }
+  return fallback;
 }
 
 function formatPartType(value: string) {

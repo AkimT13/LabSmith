@@ -7,10 +7,12 @@ import { MessageBubble } from "@/components/sessions/message-bubble";
 import { SpecCard } from "@/components/sessions/spec-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { PartRequest } from "@/lib/api";
 import { useChat } from "@/lib/use-chat";
 
 interface ChatPanelProps {
   sessionId: string;
+  initialSpec?: PartRequest | null;
   disabled?: boolean;
   disabledReason?: string;
   onArtifactGenerated?: () => void | Promise<void>;
@@ -20,6 +22,7 @@ const VISIBLE_MESSAGE_LIMIT = 80;
 
 export function ChatPanel({
   sessionId,
+  initialSpec = null,
   disabled = false,
   disabledReason,
   onArtifactGenerated,
@@ -36,7 +39,7 @@ export function ChatPanel({
     error,
     sendMessage,
     refreshMessages,
-  } = useChat({ sessionId, onArtifactGenerated });
+  } = useChat({ sessionId, initialSpec, onArtifactGenerated });
   const visibleMessages = useMemo(
     () => messages.slice(-VISIBLE_MESSAGE_LIMIT),
     [messages],
@@ -45,7 +48,7 @@ export function ChatPanel({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
-  }, [visibleMessages, isStreaming]);
+  }, [visibleMessages, currentSpec, generation.status, isStreaming]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -105,6 +108,8 @@ export function ChatPanel({
             <MessageBubble key={message.id} message={message} />
           ))}
 
+          <SpecCard spec={currentSpec} validationIssues={validationIssues} generation={generation} />
+
           {isStreaming && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -113,8 +118,6 @@ export function ChatPanel({
           )}
           <div ref={messagesEndRef} />
         </div>
-
-        <SpecCard spec={currentSpec} validationIssues={validationIssues} generation={generation} />
 
         {error && (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

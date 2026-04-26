@@ -14,6 +14,7 @@ from app.models.user import User
 from app.services.placeholder_stl import get_placeholder_stl_bytes
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from stl_helpers import assert_valid_stl
 
 pytestmark = pytest.mark.asyncio
 
@@ -34,7 +35,7 @@ async def test_chat_emits_full_event_sequence_for_valid_prompt() -> None:
         events = await _post_chat(
             client,
             session_id,
-            "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing",
+            "Create a 4 x 6 tube rack with 11 mm diameter, 15 mm spacing, and 50 mm height",
         )
 
         event_types = [e["event"] for e in events]
@@ -73,12 +74,17 @@ async def test_chat_emits_full_event_sequence_for_valid_prompt() -> None:
         assert len(artifacts) == 1
         assert artifacts[0]["id"] == artifact_id
         assert artifacts[0]["version"] == 1
-        # M4: mock generation now writes a placeholder STL via the storage backend.
-        # file_path + file_size_bytes should be populated and download/preview URLs surfaced.
+        # M6: generation writes real CadQuery STL bytes via the storage backend.
         assert artifacts[0]["file_path"] is not None
-        assert artifacts[0]["file_size_bytes"] == len(get_placeholder_stl_bytes())
+        assert artifacts[0]["file_size_bytes"] is not None
         assert artifacts[0]["download_url"] == f"/api/v1/artifacts/{artifact_id}/download"
         assert artifacts[0]["preview_url"] == f"/api/v1/artifacts/{artifact_id}/preview"
+
+        preview_response = await client.get(artifacts[0]["preview_url"])
+        assert preview_response.status_code == 200
+        assert preview_response.content != get_placeholder_stl_bytes()
+        assert len(preview_response.content) == artifacts[0]["file_size_bytes"]
+        assert_valid_stl(preview_response.content)
 
 
 async def test_chat_increments_artifact_version_on_re_run() -> None:
@@ -87,7 +93,7 @@ async def test_chat_increments_artifact_version_on_re_run() -> None:
 
     async with _client_as(user) as client:
         session_id = await _create_session(client, lab_name="Repeat Lab")
-        prompt = "tube rack 4x6 with 11mm diameter and 15mm spacing"
+        prompt = "tube rack 4x6 with 11mm diameter, 15mm spacing, and 50mm height"
 
         await _post_chat(client, session_id, prompt)
         await _post_chat(client, session_id, prompt)
@@ -96,6 +102,41 @@ async def test_chat_increments_artifact_version_on_re_run() -> None:
         assert len(artifacts) == 2
         # newest first → version 2 then version 1
         assert {a["version"] for a in artifacts} == {1, 2}
+
+
+async def test_chat_asks_for_missing_tube_dimensions_then_uses_follow_up() -> None:
+    await _require_database()
+    user = await _create_user("clarify")
+
+    async with _client_as(user) as client:
+        session_id = await _create_session(client, lab_name="Clarify Lab")
+
+        first_events = await _post_chat(
+            client,
+            session_id,
+            "Create a 4 x 6 tube rack with 15 mm spacing",
+        )
+        first_types = [e["event"] for e in first_events]
+
+        assert "spec_parsed" in first_types
+        assert "generation_started" not in first_types
+        first_complete = next(e for e in first_events if e["event"] == "message_complete")
+        assert "Tube diameter is required" in first_complete["data"]["content"]
+        assert "Tube height is required" in first_complete["data"]["content"]
+
+        second_events = await _post_chat(
+            client,
+            session_id,
+            "The tubes are 11 mm diameter and 50 mm tall",
+        )
+        second_types = [e["event"] for e in second_events]
+
+        assert "spec_parsed" in second_types
+        assert "generation_started" in second_types
+        assert "generation_complete" in second_types
+
+        artifacts = (await client.get(f"/api/v1/sessions/{session_id}/artifacts")).json()
+        assert len(artifacts) == 1
 
 
 async def test_chat_returns_message_complete_only_for_unparseable_prompt() -> None:

@@ -17,7 +17,7 @@ def has_errors(issues: list[ValidationIssue]) -> bool:
 
 def _validate_required(request: PartRequest) -> list[ValidationIssue]:
     required_by_part = {
-        PartType.TUBE_RACK: ["rows", "cols", "diameter_mm", "spacing_mm"],
+        PartType.TUBE_RACK: ["rows", "cols", "diameter_mm", "depth_mm"],
         PartType.GEL_COMB: ["well_count", "well_width_mm", "well_height_mm", "depth_mm"],
     }
     issues: list[ValidationIssue] = []
@@ -28,10 +28,19 @@ def _validate_required(request: PartRequest) -> list[ValidationIssue]:
                     severity=ValidationSeverity.ERROR,
                     code="missing_parameter",
                     field=field,
-                    message=f"{field} is required for {request.part_type.value}.",
+                    message=_missing_parameter_message(request.part_type, field),
                 )
             )
     return issues
+
+
+def _missing_parameter_message(part_type: PartType, field: str) -> str:
+    if part_type == PartType.TUBE_RACK:
+        if field == "diameter_mm":
+            return "Tube diameter is required. What is the tube diameter in mm?"
+        if field == "depth_mm":
+            return "Tube height is required. How tall is the tube in mm?"
+    return f"{field} is required for {part_type.value}."
 
 
 def _validate_spacing(request: PartRequest) -> list[ValidationIssue]:

@@ -1,7 +1,6 @@
 """Tests for the M4 artifact download/preview endpoints."""
 from __future__ import annotations
 
-import json
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -15,6 +14,7 @@ from app.models.user import User
 from app.services.placeholder_stl import get_placeholder_stl_bytes
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
+from stl_helpers import assert_valid_stl
 
 pytestmark = pytest.mark.asyncio
 
@@ -25,7 +25,7 @@ async def dispose_engine_after_test() -> AsyncGenerator[None, None]:
     await engine.dispose()
 
 
-async def test_download_returns_placeholder_stl_with_correct_headers() -> None:
+async def test_download_returns_generated_stl_with_correct_headers() -> None:
     await _require_database()
     user = await _create_user("downloader")
 
@@ -39,7 +39,9 @@ async def test_download_returns_placeholder_stl_with_correct_headers() -> None:
         assert "attachment" in response.headers["content-disposition"].lower()
         # filename should incorporate the session title slug + version
         assert "v1" in response.headers["content-disposition"]
-        assert response.content == get_placeholder_stl_bytes()
+        assert response.content != get_placeholder_stl_bytes()
+        assert len(response.content) == artifact["file_size_bytes"]
+        assert_valid_stl(response.content)
 
 
 async def test_preview_returns_inline_bytes_with_etag() -> None:
@@ -59,7 +61,9 @@ async def test_preview_returns_inline_bytes_with_etag() -> None:
         etag = response.headers["etag"]
         assert artifact["id"] in etag
         assert "v1" in etag
-        assert response.content == get_placeholder_stl_bytes()
+        assert response.content != get_placeholder_stl_bytes()
+        assert len(response.content) == artifact["file_size_bytes"]
+        assert_valid_stl(response.content)
 
 
 async def test_preview_returns_304_on_matching_if_none_match() -> None:
@@ -92,7 +96,8 @@ async def test_artifact_response_includes_download_and_preview_urls() -> None:
         assert artifact["download_url"] == f"/api/v1/artifacts/{artifact['id']}/download"
         assert artifact["preview_url"] == f"/api/v1/artifacts/{artifact['id']}/preview"
         assert artifact["file_path"] is not None
-        assert artifact["file_size_bytes"] == len(get_placeholder_stl_bytes())
+        assert artifact["file_size_bytes"] is not None
+        assert artifact["file_size_bytes"] > len(get_placeholder_stl_bytes())
 
 
 async def test_preview_returns_415_for_non_stl_artifact() -> None:
@@ -148,7 +153,7 @@ async def test_download_returns_403_for_non_member() -> None:
 # ---------------------------------------------------------------------------
 
 
-_ARTIFACT_PROMPT = "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing"
+_ARTIFACT_PROMPT = "Create a 4 x 6 tube rack with 11 mm diameter, 15 mm spacing, and 50 mm height"
 
 
 async def _generate_artifact(

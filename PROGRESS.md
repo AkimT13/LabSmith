@@ -590,15 +590,18 @@ Branch: `m5_akim`. Backend extraction + onboarding stub + frontend type picker s
 4. **Registry hardcoded?** Yes.
 5. **Backfill existing rows?** Yes — `server_default='PART_DESIGN'` in the migration handles it.
 
-#### M6 — Real CadQuery Integration (was M5)
+#### M6 — Real CadQuery Integration (was M5) — COMPLETE
 
-Now scoped specifically to the `part_design` agent's generator. Replaces the placeholder STL with real geometry from CadQuery. Everything else (persistence, storage, routes, viewer) is unchanged from M4 — M6 is purely a swap inside one agent's `run_turn`.
+Scoped specifically to the `part_design` agent's generator. Replaced the placeholder STL with real geometry from CadQuery. Everything else (persistence, storage, routes, viewer) is unchanged from M4 — M6 is a byte-source swap behind the same artifact contract.
 
-- Install CadQuery as a real dep (currently optional)
-- Implement builders for `tube_rack` and `gel_comb`
-- Run CadQuery in a thread pool (`asyncio.to_thread`) since it's CPU-bound
-- Real STL + STEP export (M4 ships STL only)
-- Golden-spec integration tests so changes to builders don't silently regress dimensions
+- `cadquery>=2.4` is now a real backend dependency instead of an optional extra.
+- New `backend/app/services/cad_generation.py` returns generated artifact bytes for supported part-design specs.
+- Implemented real STL builders for `tube_rack` and `gel_comb`.
+- CadQuery export runs through `asyncio.to_thread` so native CAD work does not block the event loop.
+- `settings.chat_mock=true` now controls scripted text/pacing only; valid supported specs still generate real CAD.
+- STEP remains deferred; M6 produces STL only and does not create fake STEP artifacts.
+- Golden-spec tests verify generated STL validity, dimensions, and that bytes do not match the legacy placeholder cube.
+- Full backend suite: **51 tests passing**.
 
 #### M7 — Polish + Deployment (was M6)
 

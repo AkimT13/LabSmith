@@ -1,5 +1,4 @@
 import pytest
-
 from labsmith.models import PartRequest, PartType
 from labsmith.templates import get_template, list_templates
 
@@ -24,7 +23,7 @@ def test_tube_rack_template_estimates_dimensions() -> None:
 
     assert dimensions.width_mm > 80
     assert dimensions.depth_mm > 50
-    assert dimensions.height_mm == 20.0
+    assert dimensions.height_mm == 40.0
 
 
 def test_unregistered_template_raises_key_error() -> None:

@@ -34,9 +34,8 @@ class Settings(BaseSettings):
 
     # Chat / M3
     chat_mock: bool = True
-    """When true, /sessions/{id}/chat emits scripted SSE events instead of calling
-    a real LLM or CAD pipeline. Default true until M3 wires up real LLM and M5 wires
-    up real CadQuery export."""
+    """When true, /sessions/{id}/chat uses scripted text/pacing instead of a real
+    LLM. CAD generation still runs through the real CadQuery pipeline."""
 
     # Storage / M4
     storage_backend: str = "local"

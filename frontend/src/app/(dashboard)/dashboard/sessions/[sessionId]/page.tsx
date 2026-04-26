@@ -20,6 +20,7 @@ import {
   type DesignSession,
   type Lab,
   type Project,
+  type SessionType,
 } from "@/lib/api";
 import { useDataChangedListener } from "@/lib/data-events";
 
@@ -122,6 +123,7 @@ export default function SessionDetailPage() {
   }
 
   const projectHref = `/dashboard/labs?lab=${lab.id}&project=${project.id}`;
+  const sessionType = normalizeSessionType(session.session_type);
   const previewArtifact =
     artifacts.find((artifact) => artifact.artifact_type === "stl" && artifact.preview_url) ?? null;
 
@@ -155,10 +157,10 @@ export default function SessionDetailPage() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            {sessionTypeLabel(session.session_type)}
+            {sessionTypeLabel(sessionType)}
           </p>
           <h1 className="text-2xl font-bold tracking-tight">{session.title}</h1>
-          {session.session_type === "part_design" && (
+          {sessionType === "part_design" && (
             <p className="text-sm text-muted-foreground">
               {session.part_type ? `Part type: ${session.part_type}` : "No part type set"}
             </p>
@@ -222,10 +224,12 @@ export default function SessionDetailPage() {
         </Card>
       </div>
 
-      {session.session_type === "part_design" ? (
+      {sessionType === "part_design" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
           <ChatPanel
+            key={session.id}
             sessionId={session.id}
+            initialSpec={session.current_spec}
             disabled={session.status === "archived"}
             disabledReason="Archived sessions are read-only."
             onArtifactGenerated={loadArtifacts}
@@ -244,7 +248,7 @@ export default function SessionDetailPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {session.session_type === "onboarding" && (
+          {sessionType === "onboarding" && (
             <Card className="border-dashed">
               <CardContent className="py-4">
                 <p className="text-sm text-muted-foreground">
@@ -257,7 +261,9 @@ export default function SessionDetailPage() {
             </Card>
           )}
           <ChatPanel
+            key={session.id}
             sessionId={session.id}
+            initialSpec={session.current_spec}
             disabled={session.status === "archived"}
             disabledReason="Archived sessions are read-only."
           />
@@ -267,7 +273,12 @@ export default function SessionDetailPage() {
   );
 }
 
-function sessionTypeLabel(sessionType: DesignSession["session_type"]): string {
+function normalizeSessionType(sessionType: string | null | undefined): SessionType {
+  if (sessionType === "onboarding" || sessionType === "ONBOARDING") return "onboarding";
+  return "part_design";
+}
+
+function sessionTypeLabel(sessionType: SessionType): string {
   switch (sessionType) {
     case "part_design":
       return "Part design session";

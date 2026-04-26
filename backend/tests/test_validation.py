@@ -9,6 +9,7 @@ def test_valid_tube_rack_request_has_no_issues() -> None:
         cols=6,
         diameter_mm=11.0,
         spacing_mm=15.0,
+        depth_mm=50.0,
     )
 
     assert validate_part_request(request) == []
@@ -20,12 +21,28 @@ def test_missing_required_parameter_is_error() -> None:
         rows=4,
         cols=6,
         spacing_mm=15.0,
+        depth_mm=50.0,
     )
 
     issues = validate_part_request(request)
 
     assert issues[0].severity == ValidationSeverity.ERROR
     assert issues[0].field == "diameter_mm"
+
+
+def test_missing_tube_height_is_error() -> None:
+    request = PartRequest(
+        part_type=PartType.TUBE_RACK,
+        rows=4,
+        cols=6,
+        diameter_mm=11.0,
+        spacing_mm=15.0,
+    )
+
+    issues = validate_part_request(request)
+
+    assert any(issue.severity == ValidationSeverity.ERROR for issue in issues)
+    assert any(issue.field == "depth_mm" for issue in issues)
 
 
 def test_spacing_below_minimum_is_error() -> None:
@@ -35,6 +52,7 @@ def test_spacing_below_minimum_is_error() -> None:
         cols=6,
         diameter_mm=11.0,
         spacing_mm=11.2,
+        depth_mm=50.0,
     )
 
     issues = validate_part_request(request)

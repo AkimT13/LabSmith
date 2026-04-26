@@ -18,12 +18,10 @@ dependencies = [
   "alembic>=1.13",
   "python-jose[cryptography]>=3.3",
   "httpx>=0.27",
+  "cadquery>=2.4",
 ]
 
 [project.optional-dependencies]
-cad = [
-  "cadquery>=2.4"
-]
 llm = [
   "openai>=1.30"
 ]

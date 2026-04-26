@@ -5,7 +5,9 @@ from labsmith.parser import RuleBasedParser
 def test_parser_extracts_tube_rack_parameters() -> None:
     parser = RuleBasedParser()
 
-    result = parser.parse("Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing")
+    result = parser.parse(
+        "Create a 4 x 6 tube rack with 11 mm diameter, 15 mm spacing, and 50 mm height"
+    )
 
     assert result.part_type == PartType.TUBE_RACK
     assert result.rows == 4
@@ -13,6 +15,7 @@ def test_parser_extracts_tube_rack_parameters() -> None:
     assert result.well_count == 24
     assert result.diameter_mm == 11.0
     assert result.spacing_mm == 15.0
+    assert result.depth_mm == 50.0
 
 
 def test_parser_extracts_tube_rack_defaults_from_volume() -> None:
@@ -25,6 +28,21 @@ def test_parser_extracts_tube_rack_defaults_from_volume() -> None:
     assert result.cols == 6
     assert result.diameter_mm == 11.0
     assert result.spacing_mm == 15.0
+    assert result.depth_mm is None
+
+
+def test_parser_updates_existing_tube_rack_from_dimension_reply() -> None:
+    parser = RuleBasedParser()
+    base = parser.parse("Create a 4 x 6 tube rack with 15 mm spacing")
+
+    result = parser.parse_update("The tubes are 11 mm diameter and 50 mm tall", base)
+
+    assert result.part_type == PartType.TUBE_RACK
+    assert result.rows == 4
+    assert result.cols == 6
+    assert result.diameter_mm == 11.0
+    assert result.spacing_mm == 15.0
+    assert result.depth_mm == 50.0
 
 
 def test_parser_extracts_gel_comb_defaults() -> None:

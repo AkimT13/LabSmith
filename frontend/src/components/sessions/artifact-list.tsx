@@ -92,37 +92,41 @@ export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactL
           <p className="text-sm text-muted-foreground">Generated artifacts will appear here.</p>
         )}
 
-        {artifacts.map((artifact) => (
-          <div key={artifact.id} className="rounded-md border p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-medium">{artifact.artifact_type.toUpperCase()}</p>
-                <p className="text-xs text-muted-foreground">
-                  Version {artifact.version} · {new Date(artifact.created_at).toLocaleString()}
-                </p>
+        {artifacts.length > 0 && (
+          <div className="max-h-[75px] space-y-3 overflow-y-auto pr-1">
+            {artifacts.map((artifact) => (
+              <div key={artifact.id} className="rounded-md border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{artifact.artifact_type.toUpperCase()}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Version {artifact.version} · {new Date(artifact.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
+                      {formatFileSize(artifact.file_size_bytes)}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => void handleDownload(artifact)}
+                      disabled={!artifact.download_url || downloadingId !== null}
+                      aria-label={`Download ${artifact.artifact_type.toUpperCase()} artifact`}
+                    >
+                      {downloadingId === artifact.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
-                  {formatFileSize(artifact.file_size_bytes)}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => void handleDownload(artifact)}
-                  disabled={!artifact.download_url || downloadingId !== null}
-                  aria-label={`Download ${artifact.artifact_type.toUpperCase()} artifact`}
-                >
-                  {downloadingId === artifact.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </CardContent>
     </Card>
   );

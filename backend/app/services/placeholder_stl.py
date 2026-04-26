@@ -1,10 +1,8 @@
-"""Tiny placeholder STL used by mock-mode generation.
+"""Legacy placeholder STL used as a test sentinel.
 
-Until M5 wires up real CadQuery output, mock mode needs *something* on disk so
-the frontend 3D viewer has bytes to render. We ship a 10mm unit cube generated
-in binary STL format. The bytes are deterministic — every mock generation
-produces the exact same payload, which is fine: the point is to exercise the
-viewer path, not to display the user's actual design.
+M6 real CadQuery generation should never return these bytes for a supported
+part. Tests keep this deterministic cube around so they can assert the
+placeholder path has not accidentally come back.
 
 Binary STL layout (per Wikipedia):
     UINT8[80]    – header (free-form, by convention non-"solid" prefix)

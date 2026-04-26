@@ -20,4 +20,8 @@ class TubeRackTemplate:
         plate_margin = max(6.0, diameter / 2)
         width = (cols - 1) * spacing + diameter + plate_margin * 2
         depth = (rows - 1) * spacing + diameter + plate_margin * 2
-        return EstimatedDimensions(width_mm=width, depth_mm=depth, height_mm=request.depth_mm or 20.0)
+        return EstimatedDimensions(
+            width_mm=width,
+            depth_mm=depth,
+            height_mm=request.depth_mm or 40.0,
+        )

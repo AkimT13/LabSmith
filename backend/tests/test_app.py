@@ -24,7 +24,7 @@ def test_legacy_templates_endpoint() -> None:
 def test_legacy_design_endpoint() -> None:
     response = client.post(
         "/design",
-        json={"prompt": "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing"},
+        json={"prompt": "Create a 4 x 6 tube rack with 11 mm diameter, 15 mm spacing, and 50 mm height"},
     )
     assert response.status_code == 200
     body = response.json()

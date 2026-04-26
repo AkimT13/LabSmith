@@ -140,7 +140,7 @@ export interface DesignSession {
   status: SessionStatus;
   session_type: SessionType;
   part_type: string | null;
-  current_spec: Record<string, unknown> | null;
+  current_spec: PartRequest | null;
   created_by: string;
   created_at: string;
   updated_at: string;

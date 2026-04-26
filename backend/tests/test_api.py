@@ -16,7 +16,7 @@ def test_health_endpoint() -> None:
 def test_design_endpoint_returns_plan_for_supported_prompt() -> None:
     response = client.post(
         "/design",
-        json={"prompt": "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing"},
+        json={"prompt": "Create a 4 x 6 tube rack with 11 mm diameter, 15 mm spacing, and 50 mm height"},
     )
 
     body = response.json()

@@ -5,7 +5,6 @@ import re
 
 from labsmith.models import PartRequest, PartType
 
-
 STANDARD_GRIDS: dict[int, tuple[int, int]] = {
     6: (2, 3),
     12: (3, 4),
@@ -34,18 +33,70 @@ class RuleBasedParser:
         normalized = text.lower()
         part_type = self._detect_part_type(normalized)
         request = PartRequest(part_type=part_type, source_prompt=text)
+        return self._parse_into_request(normalized, request)
 
-        request.well_count = self._extract_count(normalized, "well")
-        request.rows, request.cols = self._extract_grid(normalized, request.well_count)
-        if request.rows is not None and request.cols is not None and request.well_count is None:
+    def parse_update(self, prompt: str, base_request: PartRequest) -> PartRequest:
+        text = prompt.strip()
+        normalized = text.lower()
+        request = base_request.model_copy(deep=True)
+        request.source_prompt = text
+        updated = self._parse_into_request(normalized, request, require_change=True)
+        return updated
+
+    def _parse_into_request(
+        self,
+        normalized: str,
+        request: PartRequest,
+        *,
+        require_change: bool = False,
+    ) -> PartRequest:
+        changed = False
+
+        well_count = self._extract_count(normalized, "well")
+        rows, cols = self._extract_grid(normalized, well_count)
+        if well_count is not None:
+            request.well_count = well_count
+            changed = True
+        if rows is not None or cols is not None:
+            request.rows = rows
+            request.cols = cols
+            changed = True
+        if request.rows is not None and request.cols is not None and well_count is None:
             request.well_count = request.rows * request.cols
-        request.diameter_mm = self._extract_dimension(normalized, "diameter")
-        request.spacing_mm = self._extract_dimension(normalized, "spacing")
-        request.depth_mm = self._extract_dimension(normalized, "depth")
-        request.well_width_mm = self._extract_dimension(normalized, "width")
-        request.well_height_mm = self._extract_dimension(normalized, "height")
-        request.tube_volume_ml = self._extract_volume(normalized)
+        diameter = self._extract_dimension(normalized, "diameter")
+        spacing = self._extract_dimension(normalized, "spacing")
+        depth = self._extract_dimension(normalized, "depth")
+        width = self._extract_dimension(normalized, "width")
+        height = self._extract_dimension(normalized, "height")
+        tube_volume = self._extract_volume(normalized)
 
+        if diameter is not None:
+            request.diameter_mm = diameter
+            changed = True
+        if spacing is not None:
+            request.spacing_mm = spacing
+            changed = True
+        if depth is not None:
+            request.depth_mm = depth
+            changed = True
+        if width is not None:
+            request.well_width_mm = width
+            changed = True
+        if request.part_type == PartType.TUBE_RACK:
+            tube_height = height or self._extract_dimension(normalized, "length")
+            tube_height = tube_height or self._extract_dimension(normalized, "tall")
+            if tube_height is not None:
+                request.depth_mm = tube_height
+                changed = True
+        elif height is not None:
+            request.well_height_mm = height
+            changed = True
+        if tube_volume is not None:
+            request.tube_volume_ml = tube_volume
+            changed = True
+
+        if require_change and not changed:
+            raise ValueError("Could not identify any supported parameter changes from the prompt.")
         return self._apply_part_defaults(request)
 
     def _detect_part_type(self, text: str) -> PartType:
