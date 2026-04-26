@@ -181,6 +181,33 @@ async def test_onboarding_chat_emits_v0_catalog_without_design_events() -> None:
         assert artifacts_response.json() == []
 
 
+async def test_onboarding_mentions_available_lab_documents() -> None:
+    await _require_database()
+    user = await _create_user("onboarding_docs")
+
+    async with _client_as(user) as client:
+        session = await _create_session(
+            client, lab_name="Onboarding Docs Lab", session_type="onboarding"
+        )
+        upload_response = await client.post(
+            f"/api/v1/labs/{session['lab_id']}/documents",
+            json={
+                "title": "Microscope SOP",
+                "source_filename": "microscope-sop.txt",
+                "content": "Ask for training before use.",
+            },
+        )
+        assert upload_response.status_code == 201
+
+        events = await _post_chat(client, session["id"], "What protocol should I use?")
+        complete = events[-1]["data"]["content"]
+
+        assert "uploaded lab document records" in complete
+        assert "Microscope SOP" in complete
+        assert "semantic search and citations are not connected yet" in complete
+        assert "generation_complete" not in [event["event"] for event in events]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -258,7 +285,10 @@ async def _create_session(
         f"/api/v1/projects/{project_id}/sessions", json=body
     )
     assert session_response.status_code == 201
-    return session_response.json()
+    session = session_response.json()
+    session["lab_id"] = lab_id
+    session["project_id"] = project_id
+    return session
 
 
 @asynccontextmanager

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import artifacts, auth, chat, labs, legacy, messages, projects, sessions
+from app.routers import artifacts, auth, chat, documents, labs, legacy, messages, projects, sessions
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,6 +48,10 @@ OPENAPI_TAGS = [
     {
         "name": "artifacts",
         "description": "Authenticated artifact listing, STL preview, and downloads.",
+    },
+    {
+        "name": "documents",
+        "description": "Lab-scoped onboarding documents and downloads.",
     },
     {
         "name": "legacy",
@@ -95,6 +99,7 @@ app.include_router(sessions.router)
 app.include_router(chat.router)
 app.include_router(messages.router)
 app.include_router(artifacts.router)
+app.include_router(documents.router)
 
 # Legacy routes (from original scaffold)
 app.include_router(legacy.router)

@@ -49,5 +49,7 @@ def test_openapi_docs_include_v1_tag_metadata() -> None:
     tags = {tag["name"]: tag["description"] for tag in schema["tags"]}
     assert "Server-Sent Events chat turns" in tags["chat"]
     assert "Authenticated artifact listing" in tags["artifacts"]
+    assert "Lab-scoped onboarding documents" in tags["documents"]
     assert "/api/v1/sessions/{session_id}/chat" in schema["paths"]
     assert "/api/v1/artifacts/{artifact_id}/download" in schema["paths"]
+    assert "/api/v1/labs/{lab_id}/documents" in schema["paths"]

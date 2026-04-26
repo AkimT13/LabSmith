@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.design_session import DesignSession, SessionType
+from app.models.lab_document import LabDocument
 from app.models.laboratory import Laboratory
 from app.models.message import Message, MessageRole
 from app.models.project import Project
@@ -36,9 +37,11 @@ class OnboardingTopic:
 
 @dataclass(frozen=True)
 class OnboardingContext:
+    lab_id: uuid.UUID | None
     lab_name: str
     project_name: str
     session_title: str
+    document_titles: tuple[str, ...]
 
 
 _TOPICS: tuple[OnboardingTopic, ...] = (
@@ -303,16 +306,21 @@ async def _load_context(db: AsyncSession, session: DesignSession) -> OnboardingC
     row = result.one_or_none()
     if row is None:
         return OnboardingContext(
+            lab_id=None,
             lab_name="this lab",
             project_name="this project",
             session_title=session.title,
+            document_titles=(),
         )
 
     project, laboratory = row
+    document_titles = await _load_document_titles(db, laboratory.id)
     return OnboardingContext(
+        lab_id=laboratory.id,
         lab_name=laboratory.name,
         project_name=project.name,
         session_title=session.title,
+        document_titles=document_titles,
     )
 
 
@@ -327,17 +335,46 @@ def _build_reply(
     checklist = _format_checklist(topic.checklist)
     followups = _format_lines(topic.followups)
     prompt = user_content.strip()
+    document_note = _build_document_note(context.document_titles)
 
     return (
         f"Hi {user_name}. For {context.lab_name} / {context.project_name}, "
         f"I would treat this as an onboarding question about {topic.label.lower()}.\n\n"
-        "I do not have uploaded lab documents connected yet, so this is general "
-        "orientation guidance rather than lab policy.\n\n"
+        f"{document_note}\n\n"
         f"Your question: {prompt}\n\n"
         "Suggested checklist:\n"
         f"{checklist}\n\n"
         "Good next questions:\n"
         f"{followups}"
+    )
+
+
+async def _load_document_titles(
+    db: AsyncSession,
+    lab_id: uuid.UUID,
+) -> tuple[str, ...]:
+    result = await db.execute(
+        select(LabDocument.title)
+        .where(LabDocument.laboratory_id == lab_id)
+        .order_by(LabDocument.created_at.desc())
+        .limit(5)
+    )
+    return tuple(result.scalars().all())
+
+
+def _build_document_note(document_titles: Sequence[str]) -> str:
+    if not document_titles:
+        return (
+            "I do not have uploaded lab documents connected yet, so this is "
+            "general orientation guidance rather than lab policy."
+        )
+
+    documents = _format_lines(document_titles)
+    return (
+        "I can see uploaded lab document records, but semantic search and "
+        "citations are not connected yet. Use this as orientation guidance "
+        "and verify against these available documents:\n"
+        f"{documents}"
     )
 
 

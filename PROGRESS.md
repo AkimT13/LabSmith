@@ -711,12 +711,14 @@ Status: in progress; local Docker/chat/security/UX hardening is done, deploy-pro
 
 Real implementation of the lab onboarding agent stubbed in M5. Targets the pain point of new lab members not knowing where things are, what protocols apply, who owns what.
 
-Status: in progress; deterministic v0 is implemented, document-backed RAG remains.
+Status: in progress; deterministic v0 and lab document metadata plumbing are implemented, semantic RAG remains.
 
 - [x] `docs/M9_CONTRACT.md` defines onboarding/file-maker ownership boundaries
 - [x] Deterministic onboarding v0 agent
 - [x] Onboarding event catalog coverage (`topic_suggested`, `checklist_step`, `text_delta`, `message_complete`)
 - [x] Frontend onboarding copy updated from placeholder wording
+- [x] Lab document model, migration, JSON text upload/list/download endpoints
+- [x] Onboarding replies can mention available lab document records
 - [ ] Full RAG over lab-uploaded docs
-- [ ] Doc upload + indexing pipeline (likely a separate `Document` model, embeddings via OpenAI or similar)
+- [ ] Multipart doc upload + indexing pipeline (chunking, embeddings via OpenAI or similar)
 - [ ] Membership-aware document retrieval and citations

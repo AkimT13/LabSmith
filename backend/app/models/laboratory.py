@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.models.lab_document import LabDocument
+    from app.models.lab_membership import LabMembership
+    from app.models.project import Project
+    from app.models.user import User
 
 
 class Laboratory(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -20,13 +27,16 @@ class Laboratory(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     # Relationships
-    creator: Mapped["User"] = relationship(  # noqa: F821
+    creator: Mapped[User] = relationship(
         back_populates="created_labs", foreign_keys=[created_by]
     )
-    memberships: Mapped[list["LabMembership"]] = relationship(  # noqa: F821
+    memberships: Mapped[list[LabMembership]] = relationship(
         back_populates="laboratory", cascade="all, delete-orphan"
     )
-    projects: Mapped[list["Project"]] = relationship(  # noqa: F821
+    projects: Mapped[list[Project]] = relationship(
+        back_populates="laboratory", cascade="all, delete-orphan"
+    )
+    documents: Mapped[list[LabDocument]] = relationship(
         back_populates="laboratory", cascade="all, delete-orphan"
     )
 

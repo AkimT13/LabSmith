@@ -80,6 +80,15 @@ class Settings(BaseSettings):
     next generated event. Keeps proxies/browsers from treating long LLM pauses
     as a dead stream."""
 
+    # M9 — onboarding documents
+    lab_document_max_bytes: int = 1_000_000
+    """Maximum size for a single lab document upload in bytes.
+
+    M9 starts with text uploads over JSON to avoid multipart/file ingestion
+    complexity. Raise this once document upload UX and storage quotas are
+    designed.
+    """
+
     openai_chat_system_prompt: str = (
         "You are LabSmith, an assistant for designing 3D-printable laboratory "
         "hardware (tube racks, gel combs, etc.). The user describes a part "
