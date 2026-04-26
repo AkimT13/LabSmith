@@ -1,11 +1,26 @@
 """Agent for `part_design` sessions.
 
-This is the original M3/M4 chat orchestrator, lifted out of `chat.py` and
-behind the `SessionAgent` protocol. Behavior, event catalog, and persistence
-are unchanged from M4 — the move is purely structural so other session types
-(onboarding, future agents) can coexist without forking the chat router.
+Pipeline: stream assistant text → extract a structured `PartRequest` →
+validate → run CadQuery → persist artifact.
 
-Event catalog (matches the M3 contract):
+The streaming text and parameter extraction are both pluggable as of M7:
+
+- Assistant text comes from `app/services/llm.py::get_llm_provider()` —
+  mock by default (canned response, no key needed) or OpenAI when
+  `LABSMITH_CHAT_LLM_PROVIDER=openai`.
+- Parameter extraction comes from
+  `app/services/spec_extraction.py::get_spec_extractor()` — rule-based
+  regex by default or OpenAI structured-output when
+  `LABSMITH_SPEC_EXTRACTOR=openai`. The OpenAI extractor reads
+  `session.current_spec` and the recent message history so iterative
+  phrases like "make the wells deeper" patch the existing spec instead of
+  re-parsing from scratch. It falls back to the rule-based parser on any
+  failure, so a misconfigured key never crashes a chat turn.
+
+CadQuery generation lives in `app/services/cad_generation.py` and lands
+real STL bytes via `_run_generation` below.
+
+Event catalog (matches the M3/M4/M5 contract):
     text_delta            (0..N)
     spec_parsed           (0..1, only if a spec was parseable)
     generation_started    (0..1, only if validation passed)
@@ -31,17 +46,19 @@ from app.models.message import Message, MessageRole
 from app.models.user import User
 from app.services.agents.base import AgentEvent
 from app.services.cad_generation import generate_cad_artifacts
+from app.services.llm import get_llm_provider
+from app.services.spec_extraction import (
+    ExtractionResult,
+    get_spec_extractor,
+    messages_to_chat_history,
+)
 from app.services.storage import artifact_storage_key, get_storage
 
 logger = logging.getLogger(__name__)
 
 
 class PartDesignAgent:
-    """Generates lab hardware from natural-language prompts.
-
-    Pipeline: stream text → rule-based parser → validation → CadQuery
-    generation → persist artifact.
-    """
+    """Generates lab hardware from natural-language prompts."""
 
     session_type = SessionType.PART_DESIGN
 
@@ -57,11 +74,17 @@ class PartDesignAgent:
         if loaded_session is not None:
             session = loaded_session
 
-        assistant_message_id = uuid.uuid4()
+        # Snapshot prior conversation history BEFORE we add the assistant
+        # placeholder — that way the extractor sees a clean record of past
+        # turns without the in-flight empty assistant message. We also drop
+        # the most recent user message because it's already passed as
+        # `user_content` (and the OpenAI chat format prefers the current
+        # message be separate from history).
+        prior_history = await _load_prior_chat_history(
+            db, session_id=session.id, exclude_latest_user_message=True
+        )
 
-        # Persist the assistant Message row up-front so any later artifact rows
-        # can FK-reference it. Content is filled in as we stream; everything
-        # commits together at message_complete.
+        assistant_message_id = uuid.uuid4()
         assistant_msg = Message(
             id=assistant_message_id,
             session_id=session.id,
@@ -72,9 +95,11 @@ class PartDesignAgent:
         db.add(assistant_msg)
         await db.flush()
 
-        # 1. Stream assistant text.
-        assistant_text_chunks = _build_assistant_text_chunks(user_content)
-        for chunk in assistant_text_chunks:
+        # 1. Stream assistant text via the active LLM provider. Mock by default.
+        provider = get_llm_provider()
+        assistant_text_chunks: list[str] = []
+        async for chunk in provider.stream_response(user_content):
+            assistant_text_chunks.append(chunk)
             yield {
                 "event": "text_delta",
                 "data": {
@@ -82,21 +107,21 @@ class PartDesignAgent:
                     "delta": chunk,
                 },
             }
-            if settings.chat_mock:
-                await asyncio.sleep(0.15)  # cosmetic pacing
 
         full_assistant_text = "".join(assistant_text_chunks)
         assistant_msg.content = full_assistant_text
 
-        # 2. Parse the prompt into a structured PartRequest.
-        part_request, parse_error = _parse_prompt(
-            user_content,
+        # 2. Extract a structured PartRequest. Pluggable: rule-based (default)
+        # or OpenAI structured outputs.
+        extractor = get_spec_extractor()
+        extraction = await extractor.extract(
+            user_content=user_content,
             current_spec=session.current_spec,
+            message_history=prior_history,
         )
-        if parse_error or part_request is None:
-            assistant_msg.metadata_ = (
-                {"parse_error": parse_error} if parse_error else None
-            )
+
+        if extraction.part_request is None:
+            assistant_msg.metadata_ = _metadata_for_failed_extraction(extraction)
             yield {
                 "event": "message_complete",
                 "data": {
@@ -106,6 +131,8 @@ class PartDesignAgent:
             }
             await db.commit()
             return
+
+        part_request = extraction.part_request
 
         # 3. Validate.
         validation_issues = _validate_part_request(part_request)
@@ -119,7 +146,7 @@ class PartDesignAgent:
             },
         }
 
-        # Track inferred spec on the session.
+        # Track inferred spec on the session so the next turn's extractor sees it.
         session.current_spec = _serialize_part_request(part_request)
         session.part_type = part_request.part_type.value
 
@@ -135,7 +162,10 @@ class PartDesignAgent:
                         "delta": clarification,
                     },
                 }
-            assistant_msg.metadata_ = {"validation_errors": validation_issues}
+            assistant_msg.metadata_ = {
+                "validation_errors": validation_issues,
+                "extraction_source": extraction.source,
+            }
             yield {
                 "event": "message_complete",
                 "data": {
@@ -172,7 +202,10 @@ class PartDesignAgent:
         }
 
         # 5. Finalize and commit.
-        assistant_msg.metadata_ = {"artifact_id": str(artifact.id)}
+        assistant_msg.metadata_ = {
+            "artifact_id": str(artifact.id),
+            "extraction_source": extraction.source,
+        }
         yield {
             "event": "message_complete",
             "data": {
@@ -181,6 +214,34 @@ class PartDesignAgent:
             },
         }
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# History helper
+# ---------------------------------------------------------------------------
+
+
+async def _load_prior_chat_history(
+    db: AsyncSession,
+    *,
+    session_id: uuid.UUID,
+    exclude_latest_user_message: bool,
+) -> list[dict[str, str]]:
+    """Load past chat turns for use as LLM context.
+
+    `prepare_chat_turn()` has already persisted the current user message,
+    so when `exclude_latest_user_message=True` we trim the most-recent
+    user row off the history (it'll be passed separately as `user_content`).
+    """
+    result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at.asc())
+    )
+    rows = list(result.scalars().all())
+    if exclude_latest_user_message and rows and rows[-1].role == MessageRole.USER:
+        rows = rows[:-1]
+    return messages_to_chat_history(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +258,6 @@ async def _run_generation(
     message_id: uuid.UUID,
 ) -> Artifact:
     """Run the CAD pipeline and persist the generated artifact row."""
-    # Determine next version for this session.
     result = await db.execute(
         select(Artifact.version)
         .where(Artifact.session_id == design_session.id)
@@ -213,7 +273,6 @@ async def _run_generation(
     generated_artifacts = await generate_cad_artifacts(part_request)
     generated = generated_artifacts[0]
 
-    # Insert the artifact row first so we have a stable UUID for the storage key.
     artifact = Artifact(
         session_id=design_session.id,
         message_id=message_id,
@@ -244,41 +303,15 @@ async def _run_generation(
 
 
 # ---------------------------------------------------------------------------
-# Helpers (unchanged from M3/M4; kept private to this agent)
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def _build_assistant_text_chunks(user_content: str) -> list[str]:
-    response = (
-        f'Here\'s what I extracted from your prompt: "{user_content[:80]}". '
-        f"Parsing the parameters now and running validation. "
-    )
-    chunk_size = max(1, len(response) // 5)
-    return [response[i : i + chunk_size] for i in range(0, len(response), chunk_size)]
-
-
-def _parse_prompt(
-    user_content: str,
-    *,
-    current_spec: dict[str, Any] | None = None,
-) -> tuple[Any | None, str | None]:
-    """Rule-based parser. M5 keeps it; structured-output LLM swap is a later
-    optimization that doesn't change the agent's external behavior."""
-    from labsmith.models import PartRequest
-    from labsmith.parser import RuleBasedParser
-
-    try:
-        parser = RuleBasedParser()
-        return parser.parse(user_content), None
-    except ValueError as exc:
-        if current_spec is None:
-            return None, str(exc)
-
-        try:
-            previous_request = PartRequest.model_validate(current_spec)
-            return parser.parse_update(user_content, previous_request), None
-        except ValueError:
-            return None, str(exc)
+def _metadata_for_failed_extraction(extraction: ExtractionResult) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"extraction_source": extraction.source}
+    if extraction.error:
+        metadata["parse_error"] = extraction.error
+    return metadata
 
 
 def _validate_part_request(part_request: Any) -> list[dict[str, Any]]:

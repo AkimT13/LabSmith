@@ -603,20 +603,86 @@ Scoped specifically to the `part_design` agent's generator. Replaced the placeho
 - Golden-spec tests verify generated STL validity, dimensions, and that bytes do not match the legacy placeholder cube.
 - Full backend suite: **51 tests passing**.
 
-#### M7 — Polish + Deployment (was M6)
+## Milestone 7: Smart Parsing & Iterative Refinement — IN PROGRESS
+
+> **Renumbering note:** original plan had M7 = deployment. After M6 we noticed the LLM work was wedged into M7 ambiguously — the assistant-text streaming is a small swap, but the *structured-output parameter extraction* (replacing the regex parser, supporting "make the wells deeper" follow-ups) is the bigger piece that actually delivers natural-language → CAD. They earned their own milestone. Deployment moved to M8, onboarding agent to M9.
+
+Branch: `m7_akim`. Backend pluggable LLM + spec extraction shipped behind feature flags; mock paths remain the default so nothing requires an API key.
+
+### What shipped (this branch)
+
+#### Backend
+- **`app/services/llm.py`** — assistant-text streaming abstraction.
+  - `LLMProvider` Protocol with one method, `stream_response(user_content) -> AsyncIterator[str]`.
+  - `MockLLMProvider` — canned response with cosmetic pacing (default).
+  - `OpenAIProvider` — lazy-imports the `openai` SDK, streams Chat Completions chunks with the configured system prompt. Raises a clear `ValueError` if no API key is configured.
+  - `get_llm_provider()` factory — reads `LABSMITH_CHAT_LLM_PROVIDER` (default `mock`).
+- **`app/services/spec_extraction.py`** — structured `PartRequest` extraction abstraction.
+  - `RuleBasedExtractor` — wraps the existing regex parser. Now also consults `current_spec` and falls through to `parser.parse_update()` for follow-up turns (so iterative phrasing works even without an LLM, within the parser's regex limits).
+  - `OpenAIExtractor` — uses OpenAI's `response_format={"type": "json_schema", "strict": True}` against a hand-written PartRequest schema. Gets `current_spec` and the last 16 messages of conversation history as system context, so phrases like "make the wells 5mm deeper" patch the existing spec instead of failing the part-type detection. **Falls back to `RuleBasedExtractor` on ANY failure** (network error, malformed JSON, validation error) — a misconfigured key never crashes a chat turn.
+  - `get_spec_extractor()` factory — reads `LABSMITH_SPEC_EXTRACTOR` (default `rule_based`).
+  - `messages_to_chat_history()` helper — converts ORM `Message` rows to the OpenAI chat-history shape, dropping system/empty rows.
+- **`agents/part_design.py` rewired**:
+  - `_build_assistant_text_chunks` (the canned-text helper) deleted; agent now iterates `provider.stream_response(...)`.
+  - `_parse_prompt` (the inline regex wrapper) replaced by `extractor.extract(user_content, current_spec=session.current_spec, message_history=...)`.
+  - New helper `_load_prior_chat_history()` snapshots prior message rows BEFORE the assistant placeholder is added, so the extractor sees a clean record. Trims the most-recent user row because it's already passed separately as `user_content`.
+  - Assistant message metadata now includes `extraction_source` so we can tell apart "OpenAI extracted it" from "OpenAI failed and rule-based covered it" when debugging.
+- **Config additions** (`app/config.py`):
+  - `chat_llm_provider` (default `mock`)
+  - `spec_extractor` (default `rule_based`)
+  - `openai_api_key` (empty by default)
+  - `openai_chat_model` / `openai_extraction_model` (both `gpt-4o-mini`)
+  - `openai_chat_system_prompt` (system prompt for the assistant reply)
+- **`pyproject.toml`** — `openai>=1.30` moved from optional `[llm]` extra to required dependencies. The package is now imported lazily inside the OpenAI-flavored classes, so simply having it installed costs nothing at import time.
+- **`backend/.env.example`** — documents all four new env vars and explains when keys are needed.
+
+#### Tests (all green; no real OpenAI calls)
+- `backend/tests/test_llm_provider.py` — 4 tests: factory selection, fallback on unknown values, mock chunk shape, OpenAI key validation.
+- `backend/tests/test_spec_extraction.py` — 11 tests: factory, rule-based fresh-parse, rule-based iteration via current_spec, OpenAI valid-response parsing, OpenAI null-part-type passthrough, OpenAI fallback on network errors, OpenAI fallback on malformed JSON, history filtering. The OpenAI tests use a stub `_StubOpenAI` client to avoid network calls.
+- All existing M3/M4/M5/M6 tests still pass — extraction is behavior-preserving for the default rule-based path.
+- Full backend suite: **70 tests passing** (was 55 before M7; +15 new).
+
+### How to enable real OpenAI
+
+Two independent flags so you can mix-and-match — e.g., real LLM text with rule-based extraction, or vice versa:
+
+```bash
+# in backend/.env
+LABSMITH_OPENAI_API_KEY=sk-proj-...
+LABSMITH_CHAT_LLM_PROVIDER=openai      # real assistant text streaming
+LABSMITH_SPEC_EXTRACTOR=openai         # smart parameter extraction + iteration
+LABSMITH_OPENAI_CHAT_MODEL=gpt-4o-mini       # optional override
+LABSMITH_OPENAI_EXTRACTION_MODEL=gpt-4o-mini # optional override
+```
+
+Restart the backend. No code changes needed; the agent picks up the new provider on the next chat turn.
+
+### What this unlocks (visible to users)
+- Free-form prompts that the regex parser never understood: "I need a rack that fits 50mL Falcon tubes."
+- Iterative refinement: the user can say "actually make it 5x8 instead" or "spacing should be 18 mm" and the existing spec is patched, not re-parsed.
+- Better acknowledgement text: the canned "Got it — looking at..." is replaced by a real conversational reply.
+
+### What's NOT in M7 (deferred to M8)
+- Deployment (Docker, managed Postgres, S3/R2 storage, rate limiting, heartbeat events).
+- Real LLM tool-calling beyond simple structured output (e.g., "search the lab for similar parts").
+
+### Open work for M7 follow-up
+- Frontend has no surface for surfacing the `extraction_source` metadata. If we want users to know "this was generated via natural language" vs "fell back to rule-based," that's a small UI addition.
+- The OpenAI extractor doesn't yet stream — it makes a single completion call. Streaming structured output exists in the API but isn't worth the complexity for this use case (the call is fast enough; the streamed text is the user-visible part).
+
+#### M8 — Polish + Deployment (was M7)
 
 - Dockerfiles (backend + frontend)
 - docker-compose.yml (backend, frontend, postgres)
 - Object-store storage backend (S3 / R2 / Spaces) plugged in behind `StorageBackend` if multi-instance deploy is on the table; local FS stays as the dev path
 - Managed Postgres migration (Neon / Supabase / RDS)
-- Real LLM enabled (OpenAI provider abstraction is already in place on the `m3_akim` branch — needs to be brought forward)
 - Rate limiting on `/chat`
 - Heartbeat (`:keepalive`) SSE events for long LLM pauses
 - Error handling pass, loading skeletons, toast notifications
 - Security audit (auth bypass, IDOR, path traversal)
 - OpenAPI docs polish
 
-#### M8 — Onboarding Agent (NEW)
+#### M9 — Onboarding Agent (was M8)
 
 Real implementation of the lab onboarding agent stubbed in M5. Targets the pain point of new lab members not knowing where things are, what protocols apply, who owns what.
 
@@ -626,4 +692,4 @@ Real implementation of the lab onboarding agent stubbed in M5. Targets the pain 
 - Doc upload + indexing pipeline (likely a separate `Document` model, embeddings via OpenAI or similar)
 - Membership-aware: the agent knows about the lab's existing labs/projects/sessions and can point new members at relevant work
 
-This is intentionally vague — the design lands when M5 + M7 are done. Listing it here keeps the seam visible so M5 doesn't accidentally close it off.
+This is intentionally vague — the design lands when M7 ships. Listing it here keeps the seam visible.
