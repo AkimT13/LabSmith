@@ -47,8 +47,16 @@ _DEFAULT_VOLUME_CM3 = 12.0
 """Used when an artifact has no spec_snapshot we can size from. Roughly a small
 gel comb — keeps the demo bar moving in a reasonable amount of time."""
 
-_MIN_DURATION_SECONDS = 20.0
+_MIN_DURATION_SECONDS = 12.0
 _MAX_DURATION_SECONDS = 60 * 30  # 30 min cap so demos don't drag
+
+_NON_PRINTER_SPEED_FACTOR = 0.4
+"""Compresses every non-printer device's simulated duration to ~40% of what
+the per-type formula returned. The bar still ticks visibly (10–30s typical
+per step) but a 5-step experiment lands in well under a minute. Tune up
+toward 1.0 to make things feel more 'real-time', or down toward 0.2 for
+even snappier demos. Printer duration is unaffected — printers scale with
+artifact volume separately."""
 
 
 def estimate_volume_cm3(spec_snapshot: dict | None) -> float:
@@ -130,7 +138,10 @@ def compute_payload_duration(
         # Bad payload — silently fall back to default, never crash.
         seconds = _DEFAULT_NON_PRINTER_DURATIONS.get(device_type, _MIN_DURATION_SECONDS)
 
-    return max(_MIN_DURATION_SECONDS, min(_MAX_DURATION_SECONDS, float(seconds)))
+    # Apply the non-printer demo speedup last so per-type formulas above
+    # stay readable, then clamp.
+    seconds = float(seconds) * _NON_PRINTER_SPEED_FACTOR
+    return max(_MIN_DURATION_SECONDS, min(_MAX_DURATION_SECONDS, seconds))
 
 
 # ---------------------------------------------------------------------------
