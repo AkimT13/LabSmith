@@ -6,7 +6,9 @@ import { Download, FileBox, Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fetchArtifactResponse, type Artifact } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 interface ArtifactListProps {
   artifacts: Artifact[];
@@ -29,7 +31,13 @@ export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactL
     try {
       const token = await getToken();
       if (!token) {
-        setDownloadError("No Clerk session token. Sign out and sign back in.");
+        const message = "No Clerk session token. Sign out and sign back in.";
+        setDownloadError(message);
+        toast({
+          title: "Download failed",
+          description: message,
+          variant: "destructive",
+        });
         return;
       }
 
@@ -44,8 +52,15 @@ export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactL
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(objectUrl);
+      toast({ title: "Download started", description: filename });
     } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : "Failed to download artifact");
+      const message = err instanceof Error ? err.message : "Failed to download artifact";
+      setDownloadError(message);
+      toast({
+        title: "Download failed",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setDownloadingId(null);
     }
@@ -85,7 +100,10 @@ export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactL
         )}
 
         {loading && artifacts.length === 0 && (
-          <p className="text-sm text-muted-foreground">Loading artifacts...</p>
+          <div className="space-y-2" aria-label="Loading artifacts">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+          </div>
         )}
 
         {!loading && artifacts.length === 0 && (

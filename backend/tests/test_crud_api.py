@@ -120,6 +120,52 @@ async def test_viewer_can_read_but_cannot_create_projects() -> None:
         assert (await owner_client.delete(f"/api/v1/labs/{lab_id}")).status_code == 204
 
 
+async def test_non_member_cannot_read_known_workspace_ids() -> None:
+    await _require_database()
+    owner = await _create_user("owner")
+    outsider = await _create_user("outsider")
+
+    async with _client_as(owner) as owner_client:
+        lab_response = await owner_client.post("/api/v1/labs", json={"name": "IDOR Lab"})
+        assert lab_response.status_code == 201
+        lab_id = lab_response.json()["id"]
+
+        project_response = await owner_client.post(
+            f"/api/v1/labs/{lab_id}/projects",
+            json={"name": "Private project"},
+        )
+        assert project_response.status_code == 201
+        project_id = project_response.json()["id"]
+
+        session_response = await owner_client.post(
+            f"/api/v1/projects/{project_id}/sessions",
+            json={"title": "Private session"},
+        )
+        assert session_response.status_code == 201
+        session_id = session_response.json()["id"]
+
+    async with _client_as(outsider) as outsider_client:
+        assert (await outsider_client.get(f"/api/v1/labs/{lab_id}")).status_code == 404
+        assert (
+            await outsider_client.get(f"/api/v1/labs/{lab_id}/projects")
+        ).status_code == 404
+        assert (
+            await outsider_client.get(f"/api/v1/projects/{project_id}")
+        ).status_code == 404
+        assert (
+            await outsider_client.get(f"/api/v1/projects/{project_id}/sessions")
+        ).status_code == 404
+        assert (
+            await outsider_client.get(f"/api/v1/sessions/{session_id}")
+        ).status_code == 404
+        assert (
+            await outsider_client.get(f"/api/v1/sessions/{session_id}/messages")
+        ).status_code == 404
+
+    async with _client_as(owner) as owner_client:
+        assert (await owner_client.delete(f"/api/v1/labs/{lab_id}")).status_code == 204
+
+
 async def test_member_management_preserves_at_least_one_owner() -> None:
     await _require_database()
     owner = await _create_user("owner")

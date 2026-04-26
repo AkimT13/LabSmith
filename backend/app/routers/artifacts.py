@@ -153,7 +153,7 @@ async def _read_artifact_bytes(artifact: Artifact) -> tuple[bytes, str]:
     storage = get_storage()
     try:
         data = await storage.read(artifact.file_path)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(
             status_code=404, detail="Artifact bytes not found in storage"
         ) from exc

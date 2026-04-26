@@ -66,6 +66,27 @@ async def test_rejects_parent_traversal(tmp_path: Path) -> None:
         await storage.save("../escape.bin", b"x", content_type="text/plain")
 
 
+@pytest.mark.parametrize(
+    "key", ["/etc/passwd", "../escape.bin", "nested/../../escape.bin", "", "."]
+)
+@pytest.mark.parametrize("operation", ["save", "read", "exists", "delete"])
+async def test_rejects_invalid_keys_for_all_operations(
+    tmp_path: Path, operation: str, key: str
+) -> None:
+    storage = LocalFilesystemStorage(tmp_path)
+    with pytest.raises(ValueError):
+        if operation == "save":
+            await storage.save(key, b"x", content_type="text/plain")
+        elif operation == "read":
+            await storage.read(key)
+        elif operation == "exists":
+            await storage.exists(key)
+        elif operation == "delete":
+            await storage.delete(key)
+        else:  # pragma: no cover - guards the parametrization above
+            raise AssertionError(f"Unknown operation: {operation}")
+
+
 async def test_artifact_storage_key_shape() -> None:
     key = artifact_storage_key(
         session_id="sess",

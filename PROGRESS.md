@@ -691,7 +691,7 @@ Tests: 3 golden-spec CAD tests verify dimensions match the requested params. 3 p
 
 #### M8 — Polish + Deployment (was M7)
 
-Status: started.
+Status: in progress; local Docker/chat/security/UX hardening is done, deploy-provider items remain.
 
 - [x] Dockerfiles (backend + frontend)
 - [x] docker-compose.yml (backend, frontend, postgres)
@@ -701,9 +701,11 @@ Status: started.
 - [ ] Managed Postgres migration (Neon / Supabase / RDS)
 - [x] Rate limiting on `/chat`
 - [x] Heartbeat (`:keepalive`) SSE events for long LLM pauses
-- [ ] Error handling pass, loading skeletons, toast notifications
-- [ ] Security audit (auth bypass, IDOR, path traversal)
-- [ ] OpenAPI docs polish
+- [x] Error handling pass, loading skeletons, toast notifications on primary session surface
+- [x] Artifact storage path traversal hardening (invalid keys reject cleanly; downloads return 404 instead of 500)
+- [x] Security audit pass (auth required, IDOR regression coverage, path traversal hardening)
+- [ ] Dependency audit follow-up: `npm audit --omit=dev` reports 3 moderate PostCSS issues through Next/Clerk with no fix available in the current tree
+- [x] OpenAPI docs polish
 
 #### M9 — Onboarding Agent (was M8)
 

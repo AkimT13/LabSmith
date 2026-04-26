@@ -77,9 +77,15 @@ class LocalFilesystemStorage:
     def _resolve(self, key: str) -> Path:
         # Defense in depth: reject absolute paths and parent traversals so a
         # malicious or buggy caller can't read arbitrary files via this method.
-        if key.startswith("/") or ".." in Path(key).parts:
+        key_path = Path(key)
+        if not key_path.parts or key_path.is_absolute() or ".." in key_path.parts:
             raise ValueError(f"Invalid storage key: {key!r}")
-        return self._root / key
+        path = (self._root / key_path).resolve()
+        try:
+            path.relative_to(self._root)
+        except ValueError as exc:
+            raise ValueError(f"Invalid storage key: {key!r}") from exc
+        return path
 
     async def save(self, key: str, data: bytes, *, content_type: str) -> StorageObject:
         path = self._resolve(key)

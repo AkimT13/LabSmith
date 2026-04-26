@@ -1,7 +1,7 @@
 """Tests for the new app.main entry point (legacy routes preserved)."""
-from fastapi.testclient import TestClient
 
 from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -24,7 +24,12 @@ def test_legacy_templates_endpoint() -> None:
 def test_legacy_design_endpoint() -> None:
     response = client.post(
         "/design",
-        json={"prompt": "Create a 4 x 6 tube rack with 11 mm diameter, 15 mm spacing, and 50 mm height"},
+        json={
+            "prompt": (
+                "Create a 4 x 6 tube rack with 11 mm diameter, "
+                "15 mm spacing, and 50 mm height"
+            )
+        },
     )
     assert response.status_code == 200
     body = response.json()
@@ -34,3 +39,15 @@ def test_legacy_design_endpoint() -> None:
 def test_auth_me_requires_token() -> None:
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
+
+
+def test_openapi_docs_include_v1_tag_metadata() -> None:
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    schema = response.json()
+
+    tags = {tag["name"]: tag["description"] for tag in schema["tags"]}
+    assert "Server-Sent Events chat turns" in tags["chat"]
+    assert "Authenticated artifact listing" in tags["artifacts"]
+    assert "/api/v1/sessions/{session_id}/chat" in schema["paths"]
+    assert "/api/v1/artifacts/{artifact_id}/download" in schema["paths"]

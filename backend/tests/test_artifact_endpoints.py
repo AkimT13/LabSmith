@@ -128,6 +128,27 @@ async def test_download_returns_404_for_unknown_artifact() -> None:
         assert response.status_code == 404
 
 
+async def test_download_returns_404_for_invalid_storage_key() -> None:
+    await _require_database()
+    user = await _create_user("invalid-key")
+
+    async with _client_as(user) as client:
+        artifact = await _generate_artifact(
+            client, prompt=_ARTIFACT_PROMPT, lab_name="Invalid Key Lab"
+        )
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(Artifact).where(Artifact.id == uuid.UUID(artifact["id"]))
+            )
+            stored_artifact = result.scalar_one()
+            stored_artifact.file_path = "../escape.stl"
+            await db.commit()
+
+        response = await client.get(f"/api/v1/artifacts/{artifact['id']}/download")
+        assert response.status_code == 404
+
+
 async def test_download_returns_403_for_non_member() -> None:
     await _require_database()
     owner = await _create_user("owner")

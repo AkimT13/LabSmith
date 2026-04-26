@@ -7,7 +7,9 @@ import { MessageBubble } from "@/components/sessions/message-bubble";
 import { SpecCard } from "@/components/sessions/spec-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { PartRequest } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { useChat } from "@/lib/use-chat";
 
 interface ChatPanelProps {
@@ -29,6 +31,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const lastErrorToastRef = useRef<string | null>(null);
   const {
     messages,
     currentSpec,
@@ -49,6 +52,21 @@ export function ChatPanel({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [visibleMessages, currentSpec, generation.status, isStreaming]);
+
+  useEffect(() => {
+    if (!error) {
+      lastErrorToastRef.current = null;
+      return;
+    }
+    if (lastErrorToastRef.current === error) return;
+
+    lastErrorToastRef.current = error;
+    toast({
+      title: "Chat issue",
+      description: error,
+      variant: "destructive",
+    });
+  }, [error]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,7 +107,11 @@ export function ChatPanel({
       <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {isLoading && messages.length === 0 && (
-            <p className="text-sm text-muted-foreground">Loading messages...</p>
+            <div className="space-y-3" aria-label="Loading messages">
+              <Skeleton className="ml-auto h-16 w-2/5" />
+              <Skeleton className="h-16 w-3/5" />
+              <Skeleton className="h-40 w-full" />
+            </div>
           )}
 
           {!isLoading && messages.length === 0 && (
