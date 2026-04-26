@@ -3,13 +3,19 @@
 import { useAuth } from "@clerk/nextjs";
 import { ChevronRight, FolderKanban, FlaskConical, Plus, Rows3 } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 import { EntityFormDialog } from "@/components/dashboard/entity-form-dialog";
+import {
+  SessionFormDialog,
+  type SessionFormValues,
+} from "@/components/dashboard/session-form-dialog";
 import { Button } from "@/components/ui/button";
 import {
   createLab,
+  createProject,
+  createSession,
   fetchLabs,
   fetchProjects,
   fetchSessions,
@@ -26,27 +32,31 @@ type LabNode = Lab & { projects: ProjectNode[] };
 export function HierarchySidebar() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeLabId = searchParams.get("lab");
   const activeProjectId = searchParams.get("project");
+  const activeSessionId = pathname.match(/^\/dashboard\/sessions\/([^/]+)/)?.[1] ?? null;
   const [tree, setTree] = useState<LabNode[]>([]);
   const [openLabIds, setOpenLabIds] = useState<Set<string>>(new Set());
   const [openProjectIds, setOpenProjectIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createProjectLab, setCreateProjectLab] = useState<LabNode | null>(null);
+  const [createSessionTarget, setCreateSessionTarget] = useState<{
+    lab: LabNode;
+    project: ProjectNode;
+  } | null>(null);
 
-  const visibleOpenLabIds = useMemo(() => {
-    const next = new Set(openLabIds);
-    if (activeLabId) next.add(activeLabId);
-    return next;
-  }, [activeLabId, openLabIds]);
+  const activeSessionLocation = findSessionLocation(tree, activeSessionId);
+  const visibleOpenLabIds = new Set(openLabIds);
+  if (activeLabId) visibleOpenLabIds.add(activeLabId);
+  if (activeSessionLocation) visibleOpenLabIds.add(activeSessionLocation.labId);
 
-  const visibleOpenProjectIds = useMemo(() => {
-    const next = new Set(openProjectIds);
-    if (activeProjectId) next.add(activeProjectId);
-    return next;
-  }, [activeProjectId, openProjectIds]);
+  const visibleOpenProjectIds = new Set(openProjectIds);
+  if (activeProjectId) visibleOpenProjectIds.add(activeProjectId);
+  if (activeSessionLocation) visibleOpenProjectIds.add(activeSessionLocation.projectId);
 
   const loadTree = useCallback(async () => {
     if (!isLoaded) return;
@@ -89,7 +99,7 @@ export function HierarchySidebar() {
     } finally {
       setLoading(false);
     }
-  }, [getToken, isLoaded, isSignedIn]);
+  }, [getToken, isLoaded, isSignedIn, setError, setLoading, setTree]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
@@ -117,6 +127,40 @@ export function HierarchySidebar() {
     });
     emitDataChanged();
     router.push(projectWorkspaceHref(lab.id));
+  }
+
+  async function handleCreateProject(values: { name: string; description: string }) {
+    if (!createProjectLab) return;
+    const token = await getToken();
+    if (!token) {
+      throw new Error("No Clerk session token. Sign out and sign back in.");
+    }
+
+    const project = await createProject(token, createProjectLab.id, {
+      name: values.name,
+      description: values.description || null,
+    });
+    setOpenLabIds((current) => addId(current, createProjectLab.id));
+    emitDataChanged();
+    router.push(projectWorkspaceHref(createProjectLab.id, project.id));
+  }
+
+  async function handleCreateSession(values: SessionFormValues) {
+    if (!createSessionTarget) return;
+    const token = await getToken();
+    if (!token) {
+      throw new Error("No Clerk session token. Sign out and sign back in.");
+    }
+
+    const session = await createSession(token, createSessionTarget.project.id, {
+      title: values.title,
+      session_type: values.session_type,
+      part_type: values.part_type || null,
+    });
+    setOpenLabIds((current) => addId(current, createSessionTarget.lab.id));
+    setOpenProjectIds((current) => addId(current, createSessionTarget.project.id));
+    emitDataChanged();
+    router.push(`/dashboard/sessions/${session.id}`);
   }
 
   return (
@@ -181,6 +225,17 @@ export function HierarchySidebar() {
                   <FlaskConical className="h-4 w-4 shrink-0" />
                   <span className="truncate">{lab.name}</span>
                 </Link>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 text-muted-foreground"
+                  onClick={() => setCreateProjectLab(lab)}
+                  aria-label={`Create project in ${lab.name}`}
+                  title="Create project"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
               </div>
 
               {isLabOpen && (
@@ -217,6 +272,17 @@ export function HierarchySidebar() {
                             <FolderKanban className="h-4 w-4 shrink-0" />
                             <span className="truncate">{project.name}</span>
                           </Link>
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            className="h-7 w-7 shrink-0 text-muted-foreground"
+                            onClick={() => setCreateSessionTarget({ lab, project })}
+                            aria-label={`Create session in ${project.name}`}
+                            title="Create session"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
 
                         {isProjectOpen && (
@@ -225,7 +291,10 @@ export function HierarchySidebar() {
                               <Link
                                 key={session.id}
                                 href={`/dashboard/sessions/${session.id}`}
-                                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+                                className={cn(
+                                  "flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
+                                  activeSessionId === session.id && "bg-accent font-medium",
+                                )}
                               >
                                 <Rows3 className="h-4 w-4 shrink-0" />
                                 <span className="truncate">{session.title}</span>
@@ -263,6 +332,31 @@ export function HierarchySidebar() {
         namePlaceholder="e.g. Curry Lab"
         descriptionPlaceholder="What does this lab work on?"
       />
+
+      {createProjectLab && (
+        <EntityFormDialog
+          open={Boolean(createProjectLab)}
+          onOpenChange={(open) => !open && setCreateProjectLab(null)}
+          title="Create project"
+          description={`A new project inside ${createProjectLab.name}.`}
+          submitLabel="Create project"
+          onSubmit={handleCreateProject}
+          nameLabel="Project name"
+          namePlaceholder="e.g. Bench tools"
+        />
+      )}
+
+      {createSessionTarget && (
+        <SessionFormDialog
+          open={Boolean(createSessionTarget)}
+          onOpenChange={(open) => !open && setCreateSessionTarget(null)}
+          title="Create session"
+          description={`A new session inside ${createSessionTarget.project.name}.`}
+          submitLabel="Create session"
+          showSessionType
+          onSubmit={handleCreateSession}
+        />
+      )}
     </nav>
   );
 }
@@ -281,4 +375,25 @@ function toggleId(current: Set<string>, id: string): Set<string> {
     next.add(id);
   }
   return next;
+}
+
+function addId(current: Set<string>, id: string): Set<string> {
+  const next = new Set(current);
+  next.add(id);
+  return next;
+}
+
+function findSessionLocation(
+  tree: LabNode[],
+  sessionId: string | null,
+): { labId: string; projectId: string } | null {
+  if (!sessionId) return null;
+  for (const lab of tree) {
+    for (const project of lab.projects) {
+      if (project.sessions.some((session) => session.id === sessionId)) {
+        return { labId: lab.id, projectId: project.id };
+      }
+    }
+  }
+  return null;
 }

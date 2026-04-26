@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { ArrowLeft, FolderKanban, FlaskConical, Rows3 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
@@ -10,7 +10,7 @@ import { ArtifactList } from "@/components/sessions/artifact-list";
 import { ChatPanel } from "@/components/sessions/chat-panel";
 import { ViewerPanel } from "@/components/sessions/viewer-panel";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   fetchArtifacts,
   fetchLab,
@@ -124,104 +124,57 @@ export default function SessionDetailPage() {
 
   const projectHref = `/dashboard/labs?lab=${lab.id}&project=${project.id}`;
   const sessionType = normalizeSessionType(session.session_type);
+  const partTypeLabel =
+    sessionType === "part_design" && session.part_type ? formatPartType(session.part_type) : null;
   const previewArtifact =
     artifacts.find((artifact) => artifact.artifact_type === "stl" && artifact.preview_url) ?? null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Link
-          href="/dashboard/labs"
-          className="text-muted-foreground hover:text-foreground hover:underline"
-        >
-          Labs
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <Link
-          href={`/dashboard/labs?lab=${lab.id}`}
-          className="text-muted-foreground hover:text-foreground hover:underline"
-        >
-          {lab.name}
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <Link
-          href={projectHref}
-          className="text-muted-foreground hover:text-foreground hover:underline"
-        >
-          {project.name}
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="font-medium">{session.title}</span>
-      </div>
+    <div className="space-y-4">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Link
+            href="/dashboard/labs"
+            className="text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Labs
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <Link
+            href={`/dashboard/labs?lab=${lab.id}`}
+            className="text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {lab.name}
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <Link
+            href={projectHref}
+            className="font-medium text-foreground hover:underline"
+          >
+            {project.name}
+          </Link>
+        </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-1">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            {sessionTypeLabel(sessionType)}
-          </p>
-          <h1 className="text-2xl font-bold tracking-tight">{session.title}</h1>
-          {sessionType === "part_design" && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <h1 className="truncate text-2xl font-bold tracking-tight">{session.title}</h1>
             <p className="text-sm text-muted-foreground">
-              {session.part_type ? `Part type: ${session.part_type}` : "No part type set"}
+              {sessionTypeLabel(sessionType)}
+              {partTypeLabel ? ` · ${partTypeLabel}` : ""}
             </p>
-          )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
+              {session.status}
+            </span>
+            <Button asChild variant="outline" size="sm">
+              <Link href={projectHref}>
+                <ArrowLeft className="h-4 w-4" />
+                Back to project
+              </Link>
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
-            {session.status}
-          </span>
-          <Button asChild variant="outline" size="sm">
-            <Link href={projectHref}>
-              <ArrowLeft className="h-4 w-4" />
-              Back to project
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <FlaskConical className="h-4 w-4" />
-              Lab
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-medium">{lab.name}</p>
-            <p className="text-xs text-muted-foreground">{lab.description || "No description"}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <FolderKanban className="h-4 w-4" />
-              Project
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-medium">{project.name}</p>
-            <p className="text-xs text-muted-foreground">
-              {project.description || "No description"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <Rows3 className="h-4 w-4" />
-              Session
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="font-medium">{session.title}</p>
-            <p className="text-xs text-muted-foreground">
-              Created {new Date(session.created_at).toLocaleString()}
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       {sessionType === "part_design" ? (
@@ -279,10 +232,18 @@ function normalizeSessionType(sessionType: string | null | undefined): SessionTy
 function sessionTypeLabel(sessionType: SessionType): string {
   switch (sessionType) {
     case "part_design":
-      return "Part design session";
+      return "Part design";
     case "onboarding":
-      return "Onboarding session";
+      return "Onboarding";
     default:
       return "Session";
   }
+}
+
+function formatPartType(partType: string): string {
+  return partType
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
