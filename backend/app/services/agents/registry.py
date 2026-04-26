@@ -14,12 +14,14 @@ from __future__ import annotations
 
 from app.models.design_session import DesignSession, SessionType
 from app.services.agents.base import SessionAgent
+from app.services.agents.experiment import ExperimentRunnerAgent
 from app.services.agents.onboarding import OnboardingAgent
 from app.services.agents.part_design import PartDesignAgent
 
 _REGISTRY: dict[SessionType, SessionAgent] = {
     SessionType.PART_DESIGN: PartDesignAgent(),
     SessionType.ONBOARDING: OnboardingAgent(),
+    SessionType.EXPERIMENT: ExperimentRunnerAgent(),
 }
 
 

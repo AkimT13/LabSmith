@@ -21,12 +21,15 @@ class SessionType(str, enum.Enum):
     chat turns for this session. Set once at creation; immutable thereafter so
     the message history can't be reinterpreted under different rules.
 
-    `part_design` is the existing CAD pipeline. `onboarding` is the lab
-    orientation agent introduced in M9.
+    - `part_design` — existing CAD pipeline.
+    - `onboarding` — lab orientation agent (M9).
+    - `experiment` — multi-step experiment runner that proposes a protocol
+      and dispatches it across the lab's devices (M11).
     """
 
     PART_DESIGN = "part_design"
     ONBOARDING = "onboarding"
+    EXPERIMENT = "experiment"
 
 
 class DesignSession(Base, UUIDPrimaryKeyMixin, TimestampMixin):

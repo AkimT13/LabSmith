@@ -6,11 +6,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   fetchMessages,
+  fetchSession,
   postChat,
   type ArtifactType,
+  type ExperimentProtocol,
+  type ExperimentStatus,
   type Message,
   type PartRequest,
   type PrintabilityReport,
+  type SessionType,
+  type StepRunState,
+  type StepStatus,
   type ValidationIssue,
 } from "@/lib/api";
 
@@ -25,6 +31,11 @@ export interface GenerationState {
 
 interface UseChatOptions {
   sessionId: string;
+  /** When set to "experiment", the hook bootstraps experiment state from
+   *  the session's current_spec on mount and polls for updates while the
+   *  experiment is running — so navigating away and back picks up the
+   *  same in-flight protocol without restarting it. */
+  sessionType?: SessionType;
   initialSpec?: PartRequest | null;
   onArtifactGenerated?: () => void | Promise<void>;
 }
@@ -111,7 +122,59 @@ export interface OnboardingCitation {
   score: number | null;
 }
 
-export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: UseChatOptions) {
+// M11 experiment runner state — populated by the SSE events emitted by
+// `ExperimentRunnerAgent`. Cleared at the start of each new chat turn.
+export interface ExperimentState {
+  protocol: ExperimentProtocol | null;
+  stepStates: StepRunState[];
+  status: ExperimentStatus | null;
+  fallbackReason: string | null;
+  skippedStepIndices: number[];
+}
+
+const EMPTY_EXPERIMENT_STATE: ExperimentState = {
+  protocol: null,
+  stepStates: [],
+  status: null,
+  fallbackReason: null,
+  skippedStepIndices: [],
+};
+
+interface ProtocolProposedPayload {
+  protocol: ExperimentProtocol;
+  step_states: StepRunState[];
+  fallback_reason: string | null;
+  skipped_step_indices: number[];
+}
+
+interface StepStartedPayload {
+  step_index: number;
+  label: string;
+  kind: string;
+}
+
+interface StepCompletePayload {
+  step_index: number;
+  label: string;
+  dispatched_id: string | null;
+}
+
+interface StepFailedPayload {
+  step_index: number;
+  label: string;
+  detail: string;
+}
+
+interface ExperimentTerminalPayload {
+  detail?: string;
+}
+
+export function useChat({
+  sessionId,
+  sessionType,
+  initialSpec = null,
+  onArtifactGenerated,
+}: UseChatOptions) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -123,6 +186,7 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
   const [onboardingTopic, setOnboardingTopic] = useState<OnboardingTopic | null>(null);
   const [onboardingChecklist, setOnboardingChecklist] = useState<OnboardingChecklistItem[]>([]);
   const [onboardingCitations, setOnboardingCitations] = useState<OnboardingCitation[]>([]);
+  const [experiment, setExperiment] = useState<ExperimentState>(EMPTY_EXPERIMENT_STATE);
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,6 +316,77 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
         return;
       }
 
+      // M11 experiment runner events
+      if (streamEvent.event === "protocol_proposed") {
+        const data = payload as ProtocolProposedPayload;
+        setExperiment({
+          protocol: data.protocol,
+          stepStates: data.step_states,
+          status: "running",
+          fallbackReason: data.fallback_reason ?? null,
+          skippedStepIndices: data.skipped_step_indices ?? [],
+        });
+        return;
+      }
+
+      if (streamEvent.event === "step_started") {
+        const data = payload as StepStartedPayload;
+        setExperiment((prev) => ({
+          ...prev,
+          stepStates: prev.stepStates.map((s, i) =>
+            i === data.step_index ? { ...s, status: "running" as StepStatus } : s,
+          ),
+        }));
+        return;
+      }
+
+      if (streamEvent.event === "step_complete") {
+        const data = payload as StepCompletePayload;
+        setExperiment((prev) => ({
+          ...prev,
+          stepStates: prev.stepStates.map((s, i) =>
+            i === data.step_index
+              ? {
+                  ...s,
+                  status: "complete" as StepStatus,
+                  dispatched_id: data.dispatched_id ?? s.dispatched_id,
+                }
+              : s,
+          ),
+        }));
+        // The experiment may have created an artifact via a fabricate step
+        // — refresh the artifact list so the viewer picks it up.
+        if (onArtifactGenerated) {
+          void Promise.resolve(onArtifactGenerated()).catch(() => {});
+        }
+        return;
+      }
+
+      if (streamEvent.event === "step_failed") {
+        const data = payload as StepFailedPayload;
+        setExperiment((prev) => ({
+          ...prev,
+          stepStates: prev.stepStates.map((s, i) =>
+            i === data.step_index
+              ? { ...s, status: "failed" as StepStatus, error: data.detail }
+              : s,
+          ),
+        }));
+        return;
+      }
+
+      if (streamEvent.event === "experiment_complete") {
+        setExperiment((prev) => ({ ...prev, status: "complete" }));
+        return;
+      }
+
+      if (streamEvent.event === "experiment_failed") {
+        const data = payload as ExperimentTerminalPayload;
+        setExperiment((prev) => ({ ...prev, status: "failed" }));
+        if (data.detail) setError(data.detail);
+        return;
+      }
+
       if (streamEvent.event === "error") {
         const data = payload as ErrorPayload;
         setGeneration({ status: "error" });
@@ -290,6 +425,8 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
       setOnboardingTopic(null);
       setOnboardingChecklist([]);
       setOnboardingCitations([]);
+      // Same for M11 experiment state.
+      setExperiment(EMPTY_EXPERIMENT_STATE);
       setError(null);
       setIsStreaming(true);
 
@@ -343,6 +480,68 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
     };
   }, [refreshMessages]);
 
+  // M11: bootstrap experiment state from session.current_spec on mount.
+  // Lets you navigate to a session whose experiment is already running and
+  // see the timeline immediately, before any new chat turn.
+  useEffect(() => {
+    if (sessionType !== "experiment") return;
+    const candidate = initialSpec as unknown;
+    const bootstrapped = _bootstrapExperimentFromSpec(candidate);
+    if (bootstrapped) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- bootstrap from prop
+      setExperiment(bootstrapped);
+    }
+    // initialSpec is a stable prop from the page mount; we deliberately
+    // don't rerun on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionType]);
+
+  // M11: poll the session every 2s while an experiment is running. The
+  // background agent updates session.current_spec after each step; this
+  // keeps the timeline + step states current without a fresh chat turn.
+  // Mirrors how the lab device queue stays live via useLabDevices.
+  useEffect(() => {
+    if (sessionType !== "experiment") return;
+    if (experiment.status !== "running") return;
+    if (!isSignedIn) return;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const token = await getToken();
+        if (!token || cancelled) return;
+        const session = await fetchSession(token, sessionId);
+        if (cancelled) return;
+        const bootstrapped = _bootstrapExperimentFromSpec(session.current_spec);
+        if (bootstrapped) {
+          setExperiment((prev) => ({
+            // Preserve flags that don't live in current_spec (e.g. fallback reason).
+            ...prev,
+            ...bootstrapped,
+          }));
+        }
+        // Also pick up the assistant message text update once the
+        // background task writes the final reply.
+        await refreshMessages({ showLoading: false });
+      } catch {
+        // Polling failures are noisy and self-recover on the next tick.
+      }
+    };
+
+    const interval = window.setInterval(() => void tick(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    sessionType,
+    experiment.status,
+    sessionId,
+    isSignedIn,
+    getToken,
+    refreshMessages,
+  ]);
+
   return {
     messages,
     currentSpec,
@@ -352,11 +551,36 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
     onboardingTopic,
     onboardingChecklist,
     onboardingCitations,
+    experiment,
     isLoading,
     isStreaming,
     error,
     sendMessage,
     refreshMessages,
+  };
+}
+
+/**
+ * Returns an `ExperimentState` reconstructed from a `session.current_spec`
+ * value, or `null` if the value doesn't look like an ExperimentRunState
+ * (the same field is shared with PartRequest for part_design sessions).
+ */
+function _bootstrapExperimentFromSpec(value: unknown): ExperimentState | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (!("protocol" in candidate) || !("step_states" in candidate)) return null;
+  const protocol = candidate.protocol as ExperimentProtocol | undefined;
+  const stepStates = candidate.step_states as StepRunState[] | undefined;
+  if (!protocol || !Array.isArray(stepStates)) return null;
+  const status = candidate.status as ExperimentStatus | undefined;
+  return {
+    protocol,
+    stepStates,
+    status: status ?? "running",
+    fallbackReason: null,
+    skippedStepIndices: stepStates
+      .map((s, i) => (s.status === "skipped" ? i : -1))
+      .filter((i) => i >= 0),
   };
 }
 

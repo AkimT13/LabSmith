@@ -10,7 +10,17 @@ from labsmith import __version__
 from labsmith.models import HealthResponse
 
 from app.config import settings
-from app.routers import artifacts, auth, chat, documents, labs, messages, projects, sessions
+from app.routers import (
+    artifacts,
+    auth,
+    chat,
+    devices,
+    documents,
+    labs,
+    messages,
+    projects,
+    sessions,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,6 +64,10 @@ OPENAPI_TAGS = [
     {
         "name": "documents",
         "description": "Lab-scoped onboarding documents and downloads.",
+    },
+    {
+        "name": "devices",
+        "description": "LabSmith Device Protocol — simulated lab devices and print job queues.",
     },
 ]
 
@@ -102,3 +116,4 @@ app.include_router(chat.router)
 app.include_router(messages.router)
 app.include_router(artifacts.router)
 app.include_router(documents.router)
+app.include_router(devices.router)

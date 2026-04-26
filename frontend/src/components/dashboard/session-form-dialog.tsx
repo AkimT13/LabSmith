@@ -41,6 +41,12 @@ const SESSION_TYPE_OPTIONS: SessionTypeOption[] = [
     description:
       "Help a new lab member get oriented with practical checklist-style guidance.",
   },
+  {
+    value: "experiment",
+    label: "Experiment",
+    description:
+      "Describe an experiment; the agent drafts a multi-step protocol and dispatches it across the lab's devices (printers, centrifuges, plate readers, etc.).",
+  },
 ];
 
 export interface SessionFormValues {

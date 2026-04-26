@@ -3,6 +3,7 @@
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, MessageSquare, RefreshCw, Send } from "lucide-react";
 
+import { ExperimentTimeline } from "@/components/sessions/experiment-timeline";
 import { MessageBubble } from "@/components/sessions/message-bubble";
 import { OnboardingTurnPanel } from "@/components/sessions/onboarding-turn-panel";
 import { SpecCard } from "@/components/sessions/spec-card";
@@ -20,6 +21,9 @@ interface ChatPanelProps {
   disabled?: boolean;
   disabledReason?: string;
   onArtifactGenerated?: () => void | Promise<void>;
+  /** Lab ID — used by experiment sessions to look up live device job
+   *  results for the timeline. */
+  labId?: string;
 }
 
 const VISIBLE_MESSAGE_LIMIT = 80;
@@ -44,6 +48,14 @@ const COPY_BY_SESSION_TYPE: Record<SessionType, CopyForType> = {
     inputPlaceholder:
       "Ask an onboarding question (e.g. 'How do I reserve the microscope?')",
   },
+  experiment: {
+    cardTitle: "Experiment runner",
+    emptyState:
+      "Describe the experiment you want to run. The agent will draft a protocol " +
+      "and dispatch each step to the right device in this lab.",
+    inputPlaceholder:
+      "e.g. 'amplify these 8 samples with primer set A, then read at 260 nm'",
+  },
 };
 
 export function ChatPanel({
@@ -53,6 +65,7 @@ export function ChatPanel({
   disabled = false,
   disabledReason,
   onArtifactGenerated,
+  labId,
 }: ChatPanelProps) {
   const [draft, setDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -66,12 +79,13 @@ export function ChatPanel({
     onboardingTopic,
     onboardingChecklist,
     onboardingCitations,
+    experiment,
     isLoading,
     isStreaming,
     error,
     sendMessage,
     refreshMessages,
-  } = useChat({ sessionId, initialSpec, onArtifactGenerated });
+  } = useChat({ sessionId, sessionType, initialSpec, onArtifactGenerated });
   const visibleMessages = useMemo(
     () => messages.slice(-VISIBLE_MESSAGE_LIMIT),
     [messages],
@@ -79,6 +93,8 @@ export function ChatPanel({
   const hiddenMessageCount = Math.max(messages.length - visibleMessages.length, 0);
   const copy = COPY_BY_SESSION_TYPE[sessionType];
   const isOnboarding = sessionType === "onboarding";
+  const isExperiment = sessionType === "experiment";
+  const isPartDesign = sessionType === "part_design";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
@@ -90,6 +106,7 @@ export function ChatPanel({
     onboardingTopic,
     onboardingChecklist,
     onboardingCitations,
+    experiment,
   ]);
 
   useEffect(() => {
@@ -169,9 +186,11 @@ export function ChatPanel({
             <MessageBubble key={message.id} message={message} />
           ))}
 
-          {/* Per-session-type extras: design sessions get the spec card; */}
-          {/* onboarding sessions get the topic + checklist + citation panel. */}
-          {!isOnboarding && (
+          {/* Per-session-type extras: */}
+          {/* - part_design  → spec card */}
+          {/* - onboarding   → topic + checklist + citations */}
+          {/* - experiment   → protocol timeline */}
+          {isPartDesign && (
             <SpecCard
               spec={currentSpec}
               validationIssues={validationIssues}
@@ -186,6 +205,10 @@ export function ChatPanel({
               checklist={onboardingChecklist}
               citations={onboardingCitations}
             />
+          )}
+
+          {isExperiment && (
+            <ExperimentTimeline experiment={experiment} labId={labId} />
           )}
 
           {isStreaming && (
