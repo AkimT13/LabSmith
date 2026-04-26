@@ -1,6 +1,7 @@
 """Tests for the M3 chat endpoint and SSE event ordering."""
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
@@ -8,10 +9,13 @@ from contextlib import asynccontextmanager
 
 import pytest
 from app.auth.clerk import get_current_user
+from app.config import settings
 from app.database import async_session_factory, engine
 from app.main import app
 from app.models.user import User
+from app.routers.chat import _format_sse
 from app.services.placeholder_stl import get_placeholder_stl_bytes
+from app.services.rate_limit import reset_rate_limiters
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from stl_helpers import assert_valid_stl
@@ -21,7 +25,9 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture(autouse=True)
 async def dispose_engine_after_test() -> AsyncGenerator[None, None]:
+    await reset_rate_limiters()
     yield
+    await reset_rate_limiters()
     await engine.dispose()
 
 
@@ -186,6 +192,53 @@ async def test_chat_rejects_empty_content() -> None:
             json={"content": ""},
         )
         assert chat_response.status_code == 422
+
+
+async def test_chat_rate_limits_user() -> None:
+    await _require_database()
+    user = await _create_user("limited")
+    original_limit = settings.chat_rate_limit_requests
+    original_window = settings.chat_rate_limit_window_seconds
+    settings.chat_rate_limit_requests = 1
+    settings.chat_rate_limit_window_seconds = 60
+    await reset_rate_limiters()
+
+    try:
+        async with _client_as(user) as client:
+            session_id = await _create_session(client, lab_name="Limited Lab")
+
+            await _post_chat(client, session_id, "make me a camera bracket")
+            rate_limited = await client.post(
+                f"/api/v1/sessions/{session_id}/chat",
+                json={"content": "make me another camera bracket"},
+            )
+
+            assert rate_limited.status_code == 429
+            assert rate_limited.headers["retry-after"]
+            assert "Too many chat requests" in rate_limited.json()["detail"]
+    finally:
+        settings.chat_rate_limit_requests = original_limit
+        settings.chat_rate_limit_window_seconds = original_window
+        await reset_rate_limiters()
+
+
+async def test_sse_formatter_emits_keepalive_comments_during_slow_events() -> None:
+    original_interval = settings.sse_keepalive_interval_seconds
+    settings.sse_keepalive_interval_seconds = 0.001
+
+    async def slow_events() -> AsyncGenerator[dict, None]:
+        await asyncio.sleep(0.01)
+        yield {"event": "message_complete", "data": {"content": "done"}}
+
+    try:
+        chunks = []
+        async for chunk in _format_sse(slow_events()):
+            chunks.append(chunk.decode("utf-8"))
+
+        assert ":keepalive\n\n" in chunks
+        assert any("event: message_complete" in chunk for chunk in chunks)
+    finally:
+        settings.sse_keepalive_interval_seconds = original_interval
 
 
 # ---------------------------------------------------------------------------

@@ -68,6 +68,18 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-4o-mini"
     openai_extraction_model: str = "gpt-4o-mini"
 
+    # M8 — deployment hardening
+    chat_rate_limit_requests: int = 30
+    """Maximum chat turns allowed per user within `chat_rate_limit_window_seconds`.
+    This in-process limiter is intended for single-instance deploys and local
+    smoke tests. Use a shared store before scaling horizontally."""
+
+    chat_rate_limit_window_seconds: int = 60
+    sse_keepalive_interval_seconds: float = 15.0
+    """Seconds between SSE comment heartbeats while the backend waits for the
+    next generated event. Keeps proxies/browsers from treating long LLM pauses
+    as a dead stream."""
+
     openai_chat_system_prompt: str = (
         "You are LabSmith, an assistant for designing 3D-printable laboratory "
         "hardware (tube racks, gel combs, etc.). The user describes a part "

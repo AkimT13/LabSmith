@@ -603,7 +603,7 @@ Scoped specifically to the `part_design` agent's generator. Replaced the placeho
 - Golden-spec tests verify generated STL validity, dimensions, and that bytes do not match the legacy placeholder cube.
 - Full backend suite: **51 tests passing**.
 
-## Milestone 7: Smart Parsing & Iterative Refinement — IN PROGRESS
+## Milestone 7: Smart Parsing & Iterative Refinement — COMPLETE
 
 > **Renumbering note:** original plan had M7 = deployment. After M6 we noticed the LLM work was wedged into M7 ambiguously — the assistant-text streaming is a small swap, but the *structured-output parameter extraction* (replacing the regex parser, supporting "make the wells deeper" follow-ups) is the bigger piece that actually delivers natural-language → CAD. They earned their own milestone. Deployment moved to M8, onboarding agent to M9.
 
@@ -640,7 +640,8 @@ Branch: `m7_akim`. Backend pluggable LLM + spec extraction shipped behind featur
 - `backend/tests/test_llm_provider.py` — 4 tests: factory selection, fallback on unknown values, mock chunk shape, OpenAI key validation.
 - `backend/tests/test_spec_extraction.py` — 11 tests: factory, rule-based fresh-parse, rule-based iteration via current_spec, OpenAI valid-response parsing, OpenAI null-part-type passthrough, OpenAI fallback on network errors, OpenAI fallback on malformed JSON, history filtering. The OpenAI tests use a stub `_StubOpenAI` client to avoid network calls.
 - All existing M3/M4/M5/M6 tests still pass — extraction is behavior-preserving for the default rule-based path.
-- Full backend suite: **70 tests passing** (was 55 before M7; +15 new).
+- Follow-up parser polish: labeled bare dimensions default to millimeters, while explicit `cm`, `m`, `in`, `ft`, `um`, and `nm` values convert into internal millimeters.
+- Full backend suite: **75 tests passing** (was 55 before M7; +20 new).
 
 ### How to enable real OpenAI
 
@@ -672,15 +673,19 @@ Restart the backend. No code changes needed; the agent picks up the new provider
 
 #### M8 — Polish + Deployment (was M7)
 
-- Dockerfiles (backend + frontend)
-- docker-compose.yml (backend, frontend, postgres)
-- Object-store storage backend (S3 / R2 / Spaces) plugged in behind `StorageBackend` if multi-instance deploy is on the table; local FS stays as the dev path
-- Managed Postgres migration (Neon / Supabase / RDS)
-- Rate limiting on `/chat`
-- Heartbeat (`:keepalive`) SSE events for long LLM pauses
-- Error handling pass, loading skeletons, toast notifications
-- Security audit (auth bypass, IDOR, path traversal)
-- OpenAPI docs polish
+Status: started.
+
+- [x] Dockerfiles (backend + frontend)
+- [x] docker-compose.yml (backend, frontend, postgres)
+- [x] Build Docker images and smoke-test backend + Postgres compose health
+- [ ] Smoke-test frontend compose with real Clerk env
+- [ ] Object-store storage backend (S3 / R2 / Spaces) plugged in behind `StorageBackend` if multi-instance deploy is on the table; local FS stays as the dev path
+- [ ] Managed Postgres migration (Neon / Supabase / RDS)
+- [x] Rate limiting on `/chat`
+- [x] Heartbeat (`:keepalive`) SSE events for long LLM pauses
+- [ ] Error handling pass, loading skeletons, toast notifications
+- [ ] Security audit (auth bypass, IDOR, path traversal)
+- [ ] OpenAPI docs polish
 
 #### M9 — Onboarding Agent (was M8)
 
