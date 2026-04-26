@@ -538,7 +538,7 @@ The session page now renders authenticated STL previews from the M4 artifact end
 
 > **Renumbering note:** the original plan had M5 = real CadQuery. After M4 we decided to insert a "Session Types + Agent Abstraction" milestone first, so CadQuery moved to M6, deployment to M7, and the onboarding agent (a teammate-driven idea) got its own slot at M8.
 
-## Milestone 5: Session Types + Agent Abstraction — IN PROGRESS
+## Milestone 5: Session Types + Agent Abstraction — COMPLETE
 
 Branch: `m5_akim`. Backend extraction + onboarding stub + frontend type picker shipped.
 
@@ -576,12 +576,11 @@ Branch: `m5_akim`. Backend extraction + onboarding stub + frontend type picker s
 - Full backend suite: **49 tests passing** (was 42 before M5; +7 new agent tests).
 
 ### Build / lint status
-- `npm run lint` clean.
-- `npm run build` is broken on **main** (pre-existing webpack issue with three.js's `OrbitControls.js` import path — confirmed by stashing M5 changes and re-running). Not introduced by M5; needs a separate fix on the frontend, possibly switching to `dev:turbo` or pinning a different three.js version. M5 lint passes and the dev server runs.
+- `npm run backend:test` passes after running `npm run backend:migrate`.
+- `npm --prefix frontend run lint` passes.
+- `npm --prefix frontend run build` passes with the webpack script.
 
 ### Open work for M5 follow-up
-- Resolve the three.js webpack import path so `npm run build` succeeds on `main`.
-- Write `docs/M5_CONTRACT.md` retroactively — useful as a record of the agent protocol shape and event catalog per session type, even though both agents are on the same branch right now.
 - Onboarding agent's body (RAG, checklists) is M8 — left as a stub on purpose.
 
 ### Decisions made (the open questions from the planning entry)
@@ -596,7 +595,7 @@ Branch: `m5_akim`. Backend extraction + onboarding stub + frontend type picker s
 Now scoped specifically to the `part_design` agent's generator. Replaces the placeholder STL with real geometry from CadQuery. Everything else (persistence, storage, routes, viewer) is unchanged from M4 — M6 is purely a swap inside one agent's `run_turn`.
 
 - Install CadQuery as a real dep (currently optional)
-- Implement builders for `tube_rack`, `gel_comb`, `tma_mold`
+- Implement builders for `tube_rack` and `gel_comb`
 - Run CadQuery in a thread pool (`asyncio.to_thread`) since it's CPU-bound
 - Real STL + STEP export (M4 ships STL only)
 - Golden-spec integration tests so changes to builders don't silently regress dimensions
