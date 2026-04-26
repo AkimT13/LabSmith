@@ -310,7 +310,16 @@ async def submit_print_job(
 
     jobs: list[DeviceJob] = []
     for _ in range(copies):
-        device = await _select_device(db, lab_id=lab_id, preferred_id=device_id)
+        # Lock to PRINTER_3D explicitly so multi-copy print jobs never
+        # spill over onto centrifuges, plate readers, etc. when printers
+        # are busy. Without the filter, the shortest-queue scheduler
+        # would happily route a print to any device with capacity.
+        device = await _select_device(
+            db,
+            lab_id=lab_id,
+            preferred_id=device_id,
+            device_type=DeviceType.PRINTER_3D,
+        )
         if device is None:
             raise HTTPException(
                 status_code=409,

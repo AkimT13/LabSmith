@@ -192,6 +192,46 @@ async def test_scheduler_balances_across_two_printers() -> None:
         }
 
 
+async def test_print_jobs_never_spill_onto_non_printer_devices() -> None:
+    """Regression: when copies > available printers, the scheduler used to
+    fall back to any idle device — including centrifuges/plate readers —
+    because submit_print_job didn't constrain by device_type. All print
+    jobs must land on printer_3d devices, even when those are queued."""
+    await _require_database()
+    user = await _create_user("print-spill")
+
+    async with _client_as(user) as client:
+        lab_id = (
+            await client.post("/api/v1/labs", json={"name": "Spill Lab"})
+        ).json()["id"]
+
+        # One printer, one centrifuge — both idle.
+        printer = (
+            await client.post(
+                f"/api/v1/labs/{lab_id}/devices",
+                json={"name": "MK4", "device_type": "printer_3d"},
+            )
+        ).json()
+        await client.post(
+            f"/api/v1/labs/{lab_id}/devices",
+            json={"name": "Cent A", "device_type": "centrifuge"},
+        )
+
+        artifact = await _generate_artifact(client, lab_id=lab_id)
+
+        # 3 copies — printer holds one running + two queued, centrifuge
+        # must NOT receive any.
+        response = await client.post(
+            f"/api/v1/labs/{lab_id}/devices/print",
+            json={"artifact_id": artifact["id"], "copies": 3},
+        )
+        assert response.status_code == 201
+        jobs = response.json()["jobs"]
+        assert len(jobs) == 3
+        for job in jobs:
+            assert job["device_id"] == printer["id"]
+
+
 async def test_third_job_queues_when_both_printers_busy() -> None:
     await _require_database()
     user = await _create_user("queue-builder")
@@ -238,9 +278,16 @@ async def test_tick_promotes_completed_run_and_starts_next() -> None:
             )
 
     # Backdate the running job's started_at so the next read marks it complete.
+    # Scope queries to *this* lab — earlier tests in the suite leave running
+    # jobs in the DB, which would break a global scalar_one() lookup.
     async with async_session_factory() as db:
         result = await db.execute(
-            select(DeviceJob).where(DeviceJob.status == JobStatus.RUNNING)
+            select(DeviceJob)
+            .join(LabDevice, LabDevice.id == DeviceJob.device_id)
+            .where(
+                LabDevice.laboratory_id == uuid.UUID(lab_id),
+                DeviceJob.status == JobStatus.RUNNING,
+            )
         )
         running = result.scalar_one()
         running.started_at = datetime.now(timezone.utc) - timedelta(
@@ -252,7 +299,10 @@ async def test_tick_promotes_completed_run_and_starts_next() -> None:
 
         # The previously-running job is now complete; the second job is now running.
         result = await db.execute(
-            select(DeviceJob).order_by(DeviceJob.created_at)
+            select(DeviceJob)
+            .join(LabDevice, LabDevice.id == DeviceJob.device_id)
+            .where(LabDevice.laboratory_id == uuid.UUID(lab_id))
+            .order_by(DeviceJob.created_at)
         )
         rows = list(result.scalars().all())
         assert rows[0].status == JobStatus.COMPLETE
