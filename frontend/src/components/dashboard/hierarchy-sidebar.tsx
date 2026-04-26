@@ -179,7 +179,7 @@ export function HierarchySidebar() {
     const session = await createSession(token, createSessionTarget.project.id, {
       title: values.title,
       session_type: values.session_type,
-      part_type: values.part_type || null,
+      part_type: null,
     });
     setOpenLabIds((current) => addId(current, createSessionTarget.lab.id));
     setOpenProjectIds((current) => addId(current, createSessionTarget.project.id));

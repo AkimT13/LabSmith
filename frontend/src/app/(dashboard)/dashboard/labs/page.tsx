@@ -360,7 +360,6 @@ function LabsWorkspace() {
   async function handleSubmitSession(values: {
     title: string;
     session_type: SessionType;
-    part_type: string;
     status?: SessionStatus;
   }) {
     if (!sessionDialog) return;
@@ -371,7 +370,7 @@ function LabsWorkspace() {
         createSession(token, selectedProject.id, {
           title: values.title,
           session_type: values.session_type,
-          part_type: values.part_type || null,
+          part_type: null,
         }),
       );
       emitDataChanged();
@@ -382,7 +381,6 @@ function LabsWorkspace() {
       await withToken((token) =>
         updateSession(token, target.id, {
           title: values.title,
-          part_type: values.part_type || null,
           status: values.status,
         }),
       );
@@ -620,7 +618,7 @@ function LabsWorkspace() {
                             <div>
                               <p className="font-medium">{sessionItem.title}</p>
                               <p className="text-xs text-muted-foreground">
-                                {sessionItem.part_type || "No part type"}
+                                {sessionSubtitle(sessionItem)}
                               </p>
                             </div>
                             <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
@@ -956,7 +954,6 @@ function LabsWorkspace() {
               ? {
                   title: sessionDialog.session.title,
                   session_type: sessionDialog.session.session_type,
-                  part_type: sessionDialog.session.part_type ?? "",
                   status: sessionDialog.session.status,
                 }
               : undefined
@@ -1015,6 +1012,19 @@ function projectWorkspaceHref(labId: string, projectId?: string): string {
   const params = new URLSearchParams({ lab: labId });
   if (projectId) params.set("project", projectId);
   return `/dashboard/labs?${params.toString()}`;
+}
+
+function sessionSubtitle(session: DesignSession): string {
+  if (session.session_type === "onboarding") return "Onboarding";
+  return session.part_type ? formatPartType(session.part_type) : "Part design";
+}
+
+function formatPartType(partType: string): string {
+  return partType
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function canManageLab(lab: Lab): boolean {

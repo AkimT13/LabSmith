@@ -46,7 +46,6 @@ const SESSION_TYPE_OPTIONS: SessionTypeOption[] = [
 export interface SessionFormValues {
   title: string;
   session_type: SessionType;
-  part_type: string;
   status?: SessionStatus;
 }
 
@@ -59,7 +58,6 @@ interface SessionFormDialogProps {
   initialValues?: {
     title: string;
     session_type?: SessionType;
-    part_type: string;
     status?: SessionStatus;
   };
   /** When true, the session-type picker is shown. Hidden in edit mode because
@@ -116,7 +114,6 @@ function SessionFormBody({
   initialValues?: {
     title: string;
     session_type?: SessionType;
-    part_type: string;
     status?: SessionStatus;
   };
   showSessionType: boolean;
@@ -128,15 +125,9 @@ function SessionFormBody({
   const [sessionType, setSessionType] = useState<SessionType>(
     initialValues?.session_type ?? "part_design",
   );
-  const [partType, setPartType] = useState(initialValues?.part_type ?? "");
   const [status, setStatus] = useState<SessionStatus>(initialValues?.status ?? "active");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Part type only applies to part_design sessions. If the user picks
-  // onboarding the part_type field is irrelevant — hide it instead of
-  // silently dropping the value.
-  const showPartType = sessionType === "part_design";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -147,7 +138,6 @@ function SessionFormBody({
       await onSubmit({
         title: sessionTitle.trim(),
         session_type: sessionType,
-        part_type: showPartType ? partType.trim() : "",
         status: showStatus ? status : undefined,
       });
       onClose();
@@ -195,21 +185,6 @@ function SessionFormBody({
           {activeOption && (
             <p className="text-xs text-muted-foreground">{activeOption.description}</p>
           )}
-        </div>
-      )}
-
-      {showPartType && (
-        <div className="space-y-1.5">
-          <label className={LABEL_CLASS} htmlFor="session-part-type">
-            Part type
-          </label>
-          <input
-            id="session-part-type"
-            className={INPUT_CLASS}
-            value={partType}
-            onChange={(event) => setPartType(event.target.value)}
-            placeholder="e.g. tube_rack, gel_comb"
-          />
         </div>
       )}
 
