@@ -108,6 +108,36 @@ async def read_document_bytes(document: LabDocument) -> bytes:
         ) from exc
 
 
+async def delete_lab_document(
+    db: AsyncSession,
+    *,
+    document_id: uuid.UUID,
+    user: User,
+) -> None:
+    """Remove a lab document's row AND its bytes from storage.
+
+    Mirrors the upload role gate (MEMBER+). The DB row is the source of
+    truth for whether the document "exists" — we drop it first, then attempt
+    the storage delete. Storage delete failures are swallowed so a transient
+    storage hiccup doesn't leave a zombie row that can never be re-deleted.
+    LocalFilesystemStorage's delete is already idempotent, so a missing file
+    is fine.
+    """
+    document = await get_document_for_user(
+        db,
+        document_id=document_id,
+        user=user,
+        minimum_role=LabRole.MEMBER,
+    )
+    storage_key = document.file_path
+    await db.delete(document)
+    await db.commit()
+    try:
+        await get_storage().delete(storage_key)
+    except Exception:  # noqa: BLE001 — storage hiccup shouldn't undo the row delete
+        pass
+
+
 def build_document_filename(document: LabDocument) -> str:
     source_name = document.source_filename or document.title
     path = PurePath(source_name)

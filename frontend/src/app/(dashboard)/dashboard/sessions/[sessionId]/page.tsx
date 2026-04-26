@@ -216,8 +216,11 @@ export default function SessionDetailPage() {
             <Card className="border-dashed">
               <CardContent className="py-4">
                 <p className="text-sm text-muted-foreground">
-                  Onboarding sessions provide general checklist-style guidance
-                  until lab document retrieval is connected.
+                  Onboarding sessions answer questions about this lab using
+                  whatever documents an admin has uploaded under{" "}
+                  <span className="font-medium">Lab settings → Documents</span>.
+                  Without uploaded docs you&apos;ll still get general checklist
+                  guidance per topic.
                 </p>
               </CardContent>
             </Card>
@@ -225,6 +228,7 @@ export default function SessionDetailPage() {
           <ChatPanel
             key={session.id}
             sessionId={session.id}
+            sessionType={sessionType}
             initialSpec={session.current_spec}
             disabled={session.status === "archived"}
             disabledReason="Archived sessions are read-only."

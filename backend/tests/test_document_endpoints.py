@@ -111,6 +111,63 @@ async def test_non_member_cannot_read_known_document_id() -> None:
         assert download_response.status_code == 404
 
 
+async def test_member_can_delete_lab_document() -> None:
+    """Delete drops the row, removes the bytes from storage, and cascades to
+    the list endpoint. Subsequent download attempts return 404."""
+    await _require_database()
+    user = await _create_user("docs-deleter")
+
+    async with _client_as(user) as client:
+        lab_id = await _create_lab(client, name="Delete Docs Lab")
+        document = await _create_document(client, lab_id=lab_id)
+
+        # Doc shows up in the list
+        list_before = await client.get(f"/api/v1/labs/{lab_id}/documents")
+        assert [d["id"] for d in list_before.json()] == [document["id"]]
+
+        delete_response = await client.delete(f"/api/v1/documents/{document['id']}")
+        assert delete_response.status_code == 204
+
+        # Gone from the list
+        list_after = await client.get(f"/api/v1/labs/{lab_id}/documents")
+        assert list_after.json() == []
+
+        # Download now 404s — the row is gone, no leak
+        download_response = await client.get(document["download_url"])
+        assert download_response.status_code == 404
+
+        # Deleting again should also 404 (idempotent from the user's POV)
+        delete_again = await client.delete(f"/api/v1/documents/{document['id']}")
+        assert delete_again.status_code == 404
+
+
+async def test_viewer_cannot_delete_lab_document() -> None:
+    """Viewer role can read documents but not delete them — backend enforces
+    LabRole.MEMBER on delete, mirroring the upload role gate."""
+    await _require_database()
+    owner = await _create_user("docs-owner")
+    viewer = await _create_user("docs-viewer-del")
+
+    async with _client_as(owner) as owner_client:
+        lab_id = await _create_lab(owner_client, name="Viewer Delete Docs Lab")
+        await owner_client.post(
+            f"/api/v1/labs/{lab_id}/members",
+            json={"email": viewer.email, "role": "viewer"},
+        )
+        document = await _create_document(owner_client, lab_id=lab_id)
+
+    async with _client_as(viewer) as viewer_client:
+        delete_response = await viewer_client.delete(
+            f"/api/v1/documents/{document['id']}"
+        )
+        assert delete_response.status_code == 403
+
+    # Doc is still there for the owner
+    async with _client_as(owner) as owner_client:
+        list_response = await owner_client.get(f"/api/v1/labs/{lab_id}/documents")
+        assert [d["id"] for d in list_response.json()] == [document["id"]]
+
+
 async def test_document_upload_rejects_oversized_content() -> None:
     await _require_database()
     settings.lab_document_max_bytes = 4

@@ -727,7 +727,7 @@ This is a product polish layer on top of the existing part-design/STL pipeline, 
 
 Real implementation of the lab onboarding agent stubbed in M5. Targets the pain point of new lab members not knowing where things are, what protocols apply, who owns what.
 
-Status: in progress; deterministic v0 and lab document metadata plumbing are implemented, semantic RAG remains.
+Status: in progress; deterministic v0 + lab document metadata + retrieval-augmented replies (lexical + OpenAI embeddings) are implemented. Multipart file upload, persistent embedding cache, and onboarding-specific frontend panels remain.
 
 - [x] `docs/M9_CONTRACT.md` defines onboarding/file-maker ownership boundaries
 - [x] Deterministic onboarding v0 agent
@@ -735,9 +735,67 @@ Status: in progress; deterministic v0 and lab document metadata plumbing are imp
 - [x] Frontend onboarding copy updated from placeholder wording
 - [x] Lab document model, migration, JSON text upload/list/download endpoints
 - [x] Onboarding replies can mention available lab document records
-- [ ] Full RAG over lab-uploaded docs
-- [ ] Multipart doc upload + indexing pipeline (chunking, embeddings via OpenAI or similar)
-- [ ] Membership-aware document retrieval and citations
+- [x] **Retrieval-augmented onboarding replies** — agent now reads document text, chunks it, scores chunks against the user query, and incorporates the top snippets into the reply.
+- [x] **Citations + `doc_referenced` events** — every cited document produces a `doc_referenced` SSE event with title, document_id, source, and download URL. Assistant message metadata pins `cited_documents` (id, title, score) and `doc_backed: true`.
+- [x] **Membership-scoped retrieval** — documents are loaded by `lab_id` derived from the session's project, so a session in Lab A can never retrieve from Lab B even when the same user owns both. Pinned by a regression test.
+- [x] **Pluggable retriever backends** — `LexicalRetriever` (TF-IDF-style, default) and `OpenAIEmbeddingRetriever` (semantic match, falls back to lexical on any failure). Selected via `LABSMITH_ONBOARDING_RETRIEVER`.
+- [x] **Sample lab documents** — six realistic markdown SOPs/policies/rosters at `docs/sample_lab_documents/` plus a README with `curl + jq` upload script and example queries that exercise both lexical and semantic retrieval paths.
+- [x] **Doc upload UI** — Lab Settings dialog now has a Documents section (member+ only) with a paste-text upload form (title + optional source filename + content-type select + textarea), document list with size/date, and an authenticated download button. Lives in `frontend/src/components/dashboard/lab-documents-section.tsx`.
+- [x] **Onboarding-specific frontend panel** — `useChat` now captures `topic_suggested` / `checklist_step` / `doc_referenced` events. New `OnboardingTurnPanel` renders the topic, suggested questions, checklist, and clickable cited-document links inside the chat. `ChatPanel` is session-type-aware (different title, empty state, and input placeholder for onboarding vs design).
+- [ ] Multipart doc upload (current path is JSON text only)
+- [ ] Persistent embedding cache (today: embed per-turn; cheap at current doc sizes but wasted work if collections grow)
+
+##### M9 retrieval — what shipped on `m9_akim`
+
+**New module `backend/app/services/onboarding_retrieval.py`:**
+- `chunk_document_text()` — paragraph-aware chunking with sentence-level fallback for long blocks. Targets `LABSMITH_ONBOARDING_CHUNK_MAX_CHARS` (default 600).
+- `LexicalRetriever` — TF-IDF-ish scoring over the per-turn chunk pool. Bag-of-words tokenization with stopword + short-token filtering. Drops zero-score chunks rather than padding to k.
+- `OpenAIEmbeddingRetriever` — embeds the query + all chunks in a single embeddings API call, scores by cosine. Falls back to lexical on any failure (network, malformed response, length mismatch).
+- `Retriever` Protocol so a third backend (Cohere, local sentence-transformers, etc.) is one class away. `get_retriever()` factory reads `LABSMITH_ONBOARDING_RETRIEVER`.
+
+**`agents/onboarding.py` rewired:**
+- Loads documents *with text* (not just titles) via the existing storage backend. Best-effort UTF-8 decode — binaries/missing files are silently skipped for retrieval but still listed by title in the fallback note.
+- Three reply branches kept stable:
+  1. No documents at all → "I do not have uploaded lab documents connected yet" (existing wording, preserves the M9 v0 test).
+  2. Documents exist but no chunk scored above zero → existing "available documents but semantic search not connected yet" wording (so prior tests pin the no-match branch).
+  3. **NEW**: Documents exist AND retrieval found relevant snippets → "Based on your lab documents, here's what's most relevant" with snippets and a "Sources cited above" list.
+- Emits `doc_referenced` events only when at least one chunk scored above zero (per contract §4 — title-only listing isn't enough).
+- Stamps assistant message metadata with `doc_backed: true|false`, `retriever: "lexical"|"openai"|null`, and `cited_documents: [{document_id, title, score}]`.
+
+**Config additions:**
+- `LABSMITH_ONBOARDING_RETRIEVER` (`lexical` | `openai`), `LABSMITH_OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`), `LABSMITH_ONBOARDING_CHUNK_MAX_CHARS`, `LABSMITH_ONBOARDING_TOP_K_CHUNKS`.
+- All four documented in `backend/.env.example`.
+
+**Tests added (16 new):**
+- `backend/tests/test_onboarding_retrieval.py` — 14 unit tests covering factory selection, paragraph chunking, long-paragraph splitting, empty inputs, lexical relevance ordering, lexical top-k cap, OpenAI cosine scoring (with stubbed client), OpenAI fallback on network failure, OpenAI empty-chunks short-circuit, OpenAI empty-key rejection.
+- `backend/tests/test_agents.py` — 3 new agent integration tests:
+  - `test_onboarding_retrieves_same_lab_document_with_citation` — uploads a doc, queries against its content, asserts snippet in reply, `doc_referenced` event emitted with the doc's ID, metadata `doc_backed: true` + `cited_documents` populated, no design events / artifacts.
+  - `test_onboarding_does_not_retrieve_other_lab_documents` — uploads doc to Lab B (same user owns both), queries from Lab A session, asserts NO `doc_referenced` events, NO citation in metadata, falls back to no-docs branch.
+  - `test_onboarding_falls_back_to_titles_when_no_chunks_score_above_zero` — uploads a doc with disjoint vocabulary, queries against it, asserts the existing title-listing branch fires and no `doc_referenced` events emit.
+
+**Verification:**
+- Full backend suite: **126 passing** (was 110 before M9 retrieval; +16 new).
+- `python3 -m ruff check backend/app/services/agents/onboarding.py backend/app/services/onboarding_retrieval.py backend/tests/test_agents.py backend/tests/test_onboarding_retrieval.py` — all green.
+- No frontend changes in this slice (per the contract — onboarding-specific panels are deferred). The chat panel renders the new events through the existing `useChat` hook without modification.
+
+##### Onboarding frontend — what shipped
+
+Frontend pass to make M9 demo-ready, on top of the backend retrieval work above:
+
+- **Lab Documents section** in the existing Lab Settings dialog (`frontend/src/components/dashboard/lab-documents-section.tsx`). Lists uploaded docs with size/upload-date; member+ users get a paste-text upload form (title + optional source filename + content-type select + textarea + submit). Each doc has an authenticated download button that fetches bytes through `downloadLabDocument()` (blob URL → synthesized click, since plain `<a href>` can't carry the Clerk Bearer token).
+- **`useChat` extended** (`frontend/src/lib/use-chat.ts`) to capture the M9 onboarding events: `topic_suggested`, `checklist_step`, `doc_referenced`. New per-turn state `onboardingTopic`, `onboardingChecklist`, `onboardingCitations` resets at the start of each `sendMessage` call and at every new `topic_suggested` event.
+- **`OnboardingTurnPanel`** (`frontend/src/components/sessions/onboarding-turn-panel.tsx`) renders the topic with rationale + suggested questions, the checklist as bordered cards, and citations as clickable links that route through `buildApiUrl()` + the user's auth token.
+- **`ChatPanel` made session-type-aware**: title (`"Onboarding chat"` vs `"Design chat"`), empty state, input placeholder all switch on `sessionType`. The `SpecCard` only shows for design sessions; the `OnboardingTurnPanel` only shows for onboarding sessions.
+- **Session detail page placeholder card** (`/dashboard/sessions/[sessionId]/page.tsx`) updated to point users at "Lab settings → Documents" instead of the stale "until lab document retrieval is connected" copy.
+- New API surface in `lib/api.ts`: `LabDocument` type, `fetchLabDocuments`, `createLabDocument`, `downloadLabDocument`.
+- Verified: `npm --prefix frontend run lint` clean, `npm --prefix frontend run build` green, `python3 -m pytest backend/tests` 126/126.
+
+##### Open work for M9 follow-up
+
+- Persistent embeddings store (`lab_document_chunks` table or JSONB column on `lab_documents`) so the OpenAI path doesn't re-embed on every turn. Cheap today; matters once collections grow past a handful of docs per lab.
+- Multipart file upload — current `LabDocumentCreate` schema requires the body in a `content: str` JSON field. Fine for SOPs and protocols pasted as text; binaries can't ride this path.
+- Document delete endpoint + UI — backend currently has no `DELETE /documents/{id}`; UI omits the action.
+- Inline citation markers in the reply text (e.g. `[1]` linking to the cited doc) instead of a "Sources cited above" footer.
 
 ### Akim AM Handoff
 

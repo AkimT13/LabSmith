@@ -181,31 +181,161 @@ async def test_onboarding_chat_emits_v0_catalog_without_design_events() -> None:
         assert artifacts_response.json() == []
 
 
-async def test_onboarding_mentions_available_lab_documents() -> None:
+async def test_onboarding_falls_back_to_titles_when_no_chunks_score_above_zero() -> None:
+    """When uploaded documents exist but the lexical retriever doesn't find
+    any overlap with the user's question, the agent falls back to the
+    title-listing branch and emits no `doc_referenced` events."""
     await _require_database()
-    user = await _create_user("onboarding_docs")
+    user = await _create_user("onboarding_no_match")
 
     async with _client_as(user) as client:
         session = await _create_session(
-            client, lab_name="Onboarding Docs Lab", session_type="onboarding"
+            client, lab_name="No-Match Lab", session_type="onboarding"
+        )
+        upload_response = await client.post(
+            f"/api/v1/labs/{session['lab_id']}/documents",
+            json={
+                "title": "Centrifuge SOP",
+                "source_filename": "centrifuge-sop.txt",
+                # Deliberately disjoint vocabulary from the query below so the
+                # lexical scorer returns nothing.
+                "content": "Beckman J6 spin balancing.",
+            },
+        )
+        assert upload_response.status_code == 201
+
+        events = await _post_chat(client, session["id"], "Where is the freezer?")
+        complete = events[-1]["data"]["content"]
+        types = [event["event"] for event in events]
+
+        assert "uploaded lab document records" in complete
+        assert "Centrifuge SOP" in complete
+        assert "semantic search and citations are not connected yet" in complete
+        assert "doc_referenced" not in types
+        assert "generation_complete" not in types
+
+
+async def test_onboarding_retrieves_same_lab_document_with_citation() -> None:
+    """Same-lab document content is retrieved, cited in the reply, surfaced via
+    `doc_referenced` events, and pinned in the assistant message metadata."""
+    await _require_database()
+    user = await _create_user("onboarding_same_lab")
+
+    async with _client_as(user) as client:
+        session = await _create_session(
+            client, lab_name="Retrieval Lab", session_type="onboarding"
         )
         upload_response = await client.post(
             f"/api/v1/labs/{session['lab_id']}/documents",
             json={
                 "title": "Microscope SOP",
                 "source_filename": "microscope-sop.txt",
-                "content": "Ask for training before use.",
+                "content": (
+                    "Microscope booking procedure: reserve the slot in the "
+                    "shared calendar at least one day ahead, then confirm "
+                    "with the lab manager."
+                ),
             },
         )
         assert upload_response.status_code == 201
+        document_id = upload_response.json()["id"]
 
-        events = await _post_chat(client, session["id"], "What protocol should I use?")
+        events = await _post_chat(
+            client, session["id"], "What's the microscope booking procedure?"
+        )
+        types = [event["event"] for event in events]
         complete = events[-1]["data"]["content"]
 
-        assert "uploaded lab document records" in complete
+        # Content-side proof
+        assert "Based on your lab documents" in complete
         assert "Microscope SOP" in complete
-        assert "semantic search and citations are not connected yet" in complete
-        assert "generation_complete" not in [event["event"] for event in events]
+        assert "booking procedure" in complete
+
+        # Event-side proof — at least one doc_referenced for the cited doc,
+        # and it must come BEFORE message_complete.
+        doc_referenced_events = [e for e in events if e["event"] == "doc_referenced"]
+        assert len(doc_referenced_events) >= 1
+        cited_titles = {e["data"]["title"] for e in doc_referenced_events}
+        assert "Microscope SOP" in cited_titles
+        cited_ids = {e["data"]["document_id"] for e in doc_referenced_events}
+        assert document_id in cited_ids
+        assert all(e["data"]["url"].endswith(f"/{e['data']['document_id']}/download")
+                   for e in doc_referenced_events)
+        assert types.index("doc_referenced") < types.index("message_complete")
+
+        # Metadata-side proof
+        messages = (
+            await client.get(f"/api/v1/sessions/{session['id']}/messages")
+        ).json()
+        assistant = messages[-1]
+        assert assistant["metadata"]["doc_backed"] is True
+        assert assistant["metadata"]["retriever"] == "lexical"
+        assert any(
+            cited["document_id"] == document_id
+            for cited in assistant["metadata"]["cited_documents"]
+        )
+
+        # Onboarding still must not produce design events or artifacts
+        assert "spec_parsed" not in types
+        assert "generation_started" not in types
+        assert "generation_complete" not in types
+        artifacts = (
+            await client.get(f"/api/v1/sessions/{session['id']}/artifacts")
+        ).json()
+        assert artifacts == []
+
+
+async def test_onboarding_does_not_retrieve_other_lab_documents() -> None:
+    """A document uploaded to a different lab MUST NOT be retrieved or cited
+    when the user's session lives in a separate lab. Membership scoping is
+    a hard requirement of the M9 contract."""
+    await _require_database()
+    user = await _create_user("onboarding_isolation")
+
+    async with _client_as(user) as client:
+        # Lab A: where the user will chat
+        session = await _create_session(
+            client, lab_name="Lab A", session_type="onboarding"
+        )
+
+        # Lab B: a separate lab the user owns; we upload a doc here that
+        # would otherwise be a perfect match for the question.
+        lab_b_response = await client.post("/api/v1/labs", json={"name": "Lab B"})
+        assert lab_b_response.status_code == 201
+        lab_b_id = lab_b_response.json()["id"]
+        upload_b = await client.post(
+            f"/api/v1/labs/{lab_b_id}/documents",
+            json={
+                "title": "Cross-Lab Microscope SOP",
+                "source_filename": "lab-b-sop.txt",
+                "content": (
+                    "Microscope booking procedure for Lab B: reserve the "
+                    "slot in the shared calendar at least one day ahead."
+                ),
+            },
+        )
+        assert upload_b.status_code == 201
+
+        events = await _post_chat(
+            client, session["id"], "What's the microscope booking procedure?"
+        )
+        types = [event["event"] for event in events]
+        complete = events[-1]["data"]["content"]
+
+        # No doc_referenced events at all — Lab B's doc is invisible to a
+        # Lab A session, even though the same user owns both labs.
+        assert "doc_referenced" not in types
+        assert "Cross-Lab Microscope SOP" not in complete
+
+        # Reply falls back to the no-docs branch (Lab A has no documents).
+        assert "I do not have uploaded lab documents connected yet" in complete
+
+        messages = (
+            await client.get(f"/api/v1/sessions/{session['id']}/messages")
+        ).json()
+        assistant = messages[-1]
+        assert assistant["metadata"]["doc_backed"] is False
+        assert assistant["metadata"]["cited_documents"] == []
 
 
 # ---------------------------------------------------------------------------
