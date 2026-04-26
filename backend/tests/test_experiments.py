@@ -36,11 +36,17 @@ from sqlalchemy import text
 
 
 def test_payload_duration_centrifuge_uses_seconds() -> None:
+    """Result is the payload `seconds` after the demo speed factor + clamps.
+    A 90s spin lands at ~36s with the current 0.4 multiplier."""
+    expected = max(
+        device_service._MIN_DURATION_SECONDS,
+        min(device_service._MAX_DURATION_SECONDS, 90.0 * device_service._NON_PRINTER_SPEED_FACTOR),
+    )
     assert (
         device_service.compute_payload_duration(
             device_type=DeviceType.CENTRIFUGE, payload={"rpm": 1000, "seconds": 90}
         )
-        == 90.0
+        == pytest.approx(expected)
     )
 
 
