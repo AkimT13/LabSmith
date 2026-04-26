@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,6 +71,21 @@ async def download_document(
             "Cache-Control": "private, no-cache",
         },
     )
+
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document(
+    document_id: uuid.UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> FastAPIResponse:
+    """Delete a lab document row + its bytes from storage. MEMBER+ only."""
+    await document_service.delete_lab_document(
+        db,
+        document_id=document_id,
+        user=current_user,
+    )
+    return FastAPIResponse(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _content_disposition_attachment(filename: str) -> str:

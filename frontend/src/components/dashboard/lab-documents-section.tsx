@@ -1,13 +1,15 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Download, FileText, Plus, RefreshCw } from "lucide-react";
+import { Download, FileText, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { ConfirmDeleteDialog } from "@/components/dashboard/confirm-delete-dialog";
 import { Button } from "@/components/ui/button";
 import {
   createLabDocument,
+  deleteLabDocument,
   downloadLabDocument,
   fetchLabDocuments,
   type LabDocument,
@@ -47,6 +49,7 @@ export function LabDocumentsSection({ labId, userRole }: LabDocumentsSectionProp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LabDocument | null>(null);
 
   // Upload form state
   const [title, setTitle] = useState("");
@@ -126,6 +129,18 @@ export function LabDocumentsSection({ labId, userRole }: LabDocumentsSectionProp
     } finally {
       setDownloadingId(null);
     }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    const token = await getToken();
+    if (!token) throw new Error("No Clerk session token. Sign out and sign back in.");
+    await deleteLabDocument(token, deleteTarget.id);
+    emitDataChanged();
+    toast({
+      title: "Document deleted",
+      description: `"${deleteTarget.title}" was removed from the lab.`,
+    });
   }
 
   return (
@@ -274,20 +289,45 @@ export function LabDocumentsSection({ labId, userRole }: LabDocumentsSectionProp
                 {new Date(document.created_at).toLocaleDateString()}
               </p>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="shrink-0 gap-1"
-              onClick={() => void handleDownload(document)}
-              disabled={downloadingId === document.id}
-            >
-              <Download className="h-4 w-4" />
-              {downloadingId === document.id ? "..." : "Download"}
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1"
+                onClick={() => void handleDownload(document)}
+                disabled={downloadingId === document.id}
+              >
+                <Download className="h-4 w-4" />
+                {downloadingId === document.id ? "..." : "Download"}
+              </Button>
+              {canUpload && (
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="outline"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => setDeleteTarget(document)}
+                  title={`Delete ${document.title}`}
+                  aria-label={`Delete ${document.title}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         ))}
       </div>
+
+      {deleteTarget && (
+        <ConfirmDeleteDialog
+          open={Boolean(deleteTarget)}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+          title={`Delete "${deleteTarget.title}"?`}
+          description="This removes the document from the lab and deletes its bytes from storage. Onboarding sessions will no longer be able to cite it."
+          onConfirm={handleConfirmDelete}
+        />
+      )}
     </section>
   );
 }

@@ -456,6 +456,13 @@ export function createLabDocument(
   });
 }
 
+export function deleteLabDocument(token: string, documentId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/documents/${documentId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
 /**
  * Trigger a browser download for a lab document. Documents require an
  * authenticated request, so a plain `<a href>` won't work — we fetch the
