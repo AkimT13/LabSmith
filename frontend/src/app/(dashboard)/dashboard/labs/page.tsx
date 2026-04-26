@@ -366,7 +366,7 @@ function LabsWorkspace() {
 
     if (sessionDialog.kind === "create") {
       if (!selectedLab || !selectedProject) return;
-      await withToken((token) =>
+      const createdSession = await withToken((token) =>
         createSession(token, selectedProject.id, {
           title: values.title,
           session_type: values.session_type,
@@ -374,7 +374,7 @@ function LabsWorkspace() {
         }),
       );
       emitDataChanged();
-      router.push(projectWorkspaceHref(selectedLab.id, selectedProject.id));
+      router.push(`/dashboard/sessions/${createdSession.id}`);
     } else {
       // session_type is immutable on the backend — don't send it on PATCH.
       const target = sessionDialog.session;

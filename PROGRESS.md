@@ -705,6 +705,24 @@ Status: in progress; local Docker/chat/security/UX hardening is done, deploy-pro
 - [ ] Dependency audit follow-up: `npm audit --omit=dev` reports 3 moderate PostCSS issues through Next/Clerk with no fix available in the current tree
 - [x] OpenAPI docs polish
 
+#### M8.1 — Part Design Trust + Iteration Polish — COMPLETE
+
+This is a product polish layer on top of the existing part-design/STL pipeline, not a new milestone family.
+
+- Added selectable artifact gallery behavior so users can preview/download prior generated STL versions instead of only seeing the newest artifact.
+- Added bounding-box fit constraints to `PartRequest`: `max_width_mm`, `max_depth_mm`, and `max_height_mm`.
+- Parser supports prompts such as "fit within 100 x 80 x 60 mm" and "fit in a 10 cm by 8 cm drawer", with unit conversion into millimeters.
+- Validation blocks generation when the estimated part dimensions exceed explicit fit constraints.
+- Added a lightweight printability report persisted on artifact validation metadata:
+  - estimated bounding-box size
+  - common desktop-printer bed fit
+  - wall-thickness check
+  - support-risk advisory
+  - stability advisory
+  - rough PLA material estimate
+- Surfaced printability information in the parsed spec and artifact list.
+- Kept printability labeled as heuristic/advisory; this is not slicer-backed print-time or material simulation.
+
 #### M9 — Onboarding Agent (was M8)
 
 Real implementation of the lab onboarding agent stubbed in M5. Targets the pain point of new lab members not knowing where things are, what protocols apply, who owns what.
@@ -720,3 +738,26 @@ Status: in progress; deterministic v0 and lab document metadata plumbing are imp
 - [ ] Full RAG over lab-uploaded docs
 - [ ] Multipart doc upload + indexing pipeline (chunking, embeddings via OpenAI or similar)
 - [ ] Membership-aware document retrieval and citations
+
+### Akim AM Handoff
+
+Primary focus should be **M9 semantic onboarding over lab-uploaded docs**. Part-design trust polish is complete enough for now; do not start STEP export, slicer-backed estimates, or new CAD templates unless the M9 path is blocked.
+
+Recommended next slice:
+
+1. Read `docs/M9_CONTRACT.md` and the existing document endpoints before changing schemas.
+2. Add a document indexing layer for the current lab document text records. A minimal first pass can use chunked text + keyword/vector-ready retrieval; multipart file upload can follow if needed.
+3. Keep retrieval membership-scoped: onboarding answers must only use documents from labs the current user can access.
+4. Add citations/source references to onboarding replies and assistant metadata so users can see which uploaded doc informed the answer.
+5. Add regression tests:
+   - same-lab document is retrieved for an onboarding question
+   - other-lab document is not retrieved
+   - answer includes source/citation metadata
+   - onboarding still emits no part-design events and creates no artifacts
+
+Secondary M8 items after M9 is unblocked:
+
+- Smoke-test frontend Docker compose with real Clerk env.
+- Decide whether object storage is required for the target deploy; local filesystem remains fine for single-instance dev.
+- Managed Postgres migration plan.
+- Re-check `npm audit --omit=dev`; current moderate PostCSS findings are through upstream Next/Clerk with no local fix available.
