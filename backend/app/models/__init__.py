@@ -1,6 +1,7 @@
 from app.models.artifact import Artifact
 from app.models.base import Base
 from app.models.design_session import DesignSession
+from app.models.lab_device import DeviceJob, JobStatus, LabDevice
 from app.models.lab_document import LabDocument
 from app.models.lab_membership import LabMembership
 from app.models.laboratory import Laboratory
@@ -12,6 +13,9 @@ __all__ = [
     "Artifact",
     "Base",
     "DesignSession",
+    "DeviceJob",
+    "JobStatus",
+    "LabDevice",
     "LabDocument",
     "Laboratory",
     "LabMembership",

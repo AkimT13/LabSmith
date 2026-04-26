@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Download, Eye, FileBox, Loader2, RefreshCw } from "lucide-react";
+import { Download, Eye, FileBox, Loader2, Printer, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchArtifactResponse, type Artifact } from "@/lib/api";
+import { fetchArtifactResponse, submitPrintJob, type Artifact } from "@/lib/api";
+import { emitDataChanged } from "@/lib/data-events";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,9 @@ interface ArtifactListProps {
   error: string | null;
   onRefresh: () => void | Promise<void>;
   onSelectArtifact?: (artifact: Artifact) => void;
+  /** Required for the "Send to printer" action. When omitted, the print
+   *  button is hidden — useful for read-only contexts. */
+  labId?: string;
 }
 
 export function ArtifactList({
@@ -27,10 +31,46 @@ export function ArtifactList({
   error,
   onRefresh,
   onSelectArtifact,
+  labId,
 }: ArtifactListProps) {
   const { getToken } = useAuth();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function handlePrint(artifact: Artifact) {
+    if (!labId || printingId) return;
+    setPrintingId(artifact.id);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("No Clerk session token. Sign out and sign back in.");
+      const { jobs } = await submitPrintJob(token, labId, {
+        artifact_id: artifact.id,
+      });
+      const job = jobs[0];
+      const eta = job?.eta_seconds
+        ? ` · ~${Math.max(1, Math.round(job.eta_seconds / 60))} min`
+        : "";
+      const queueNote =
+        job?.queue_position && job.queue_position > 0
+          ? ` · queue position ${job.queue_position}`
+          : "";
+      toast({
+        title: "Sent to printer",
+        description: `${artifact.artifact_type.toUpperCase()} v${artifact.version}${eta}${queueNote}`,
+      });
+      emitDataChanged();
+    } catch (err) {
+      toast({
+        title: "Print failed",
+        description:
+          err instanceof Error ? err.message : "Could not dispatch print job.",
+        variant: "destructive",
+      });
+    } finally {
+      setPrintingId(null);
+    }
+  }
 
   async function handleDownload(artifact: Artifact) {
     if (!artifact.download_url || downloadingId) return;
@@ -173,6 +213,23 @@ export function ArtifactList({
                       <Download className="h-4 w-4" />
                     )}
                   </Button>
+                  {labId && artifact.artifact_type === "stl" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => void handlePrint(artifact)}
+                      disabled={printingId !== null}
+                      aria-label={`Send ${artifact.artifact_type.toUpperCase()} v${artifact.version} to a printer`}
+                      title="Send to printer"
+                    >
+                      {printingId === artifact.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Printer className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

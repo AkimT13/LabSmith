@@ -90,7 +90,7 @@ export interface UserProfile {
 
 export type LabRole = "owner" | "admin" | "member" | "viewer";
 export type SessionStatus = "active" | "completed" | "archived";
-export type SessionType = "part_design" | "onboarding";
+export type SessionType = "part_design" | "onboarding" | "experiment";
 export type MessageRole = "user" | "assistant" | "system";
 export type ArtifactType = "stl" | "step" | "spec_json" | "validation_json";
 export type PartType =
@@ -525,4 +525,238 @@ export function deleteSession(token: string, sessionId: string): Promise<void> {
     method: "DELETE",
     token,
   });
+}
+
+// ---------------------------------------------------------------------------
+// LabSmith Device Protocol (M10) — simulated devices + print queues
+// ---------------------------------------------------------------------------
+
+export type DeviceType =
+  | "printer_3d"
+  | "liquid_handler"
+  | "centrifuge"
+  | "thermocycler"
+  | "plate_reader"
+  | "autoclave";
+
+/** Per-type label + short description for UI selectors. */
+export const DEVICE_TYPE_OPTIONS: { value: DeviceType; label: string; hint: string }[] = [
+  { value: "printer_3d", label: "3D printer", hint: "Fabricates STL/STEP parts" },
+  { value: "liquid_handler", label: "Liquid handler", hint: "Dispenses plates / runs protocols" },
+  { value: "centrifuge", label: "Centrifuge", hint: "Spins samples (rpm × seconds)" },
+  { value: "thermocycler", label: "Thermocycler", hint: "PCR / temperature programs" },
+  { value: "plate_reader", label: "Plate reader", hint: "Absorbance / fluorescence" },
+  { value: "autoclave", label: "Autoclave", hint: "Sterilization cycles" },
+];
+export type DeviceStatus = "idle" | "busy" | "offline" | "error";
+export type JobStatus = "queued" | "running" | "complete" | "failed" | "cancelled";
+
+export interface DeviceJob {
+  id: string;
+  device_id: string;
+  /** Set for printer jobs; null for centrifuge/plate_reader/etc. */
+  artifact_id: string | null;
+  submitted_by: string;
+  label: string | null;
+  status: JobStatus;
+  queue_position: number;
+  simulated_duration_seconds: number;
+  started_at: string | null;
+  completed_at: string | null;
+  submitted_at: string;
+  /** 0–1 fraction; recomputed live from started_at on each fetch. */
+  progress: number;
+  /** Seconds remaining if running, null otherwise. */
+  eta_seconds: number | null;
+  /** Per-device-type job parameters (centrifuge rpm/seconds, etc.). */
+  payload: Record<string, unknown> | null;
+  /** Simulated post-completion report; null while queued/running. Shape is
+   *  per-device-type and rendered by the matching report component. */
+  result: DeviceJobResult | null;
+}
+
+// ---------------------------------------------------------------------------
+// Simulated post-completion reports (Tier-2 demo polish)
+// ---------------------------------------------------------------------------
+
+interface DeviceJobResultBase {
+  kind: DeviceType | string;
+  headline: string;
+  metrics: Record<string, string | number>;
+}
+
+export interface CentrifugeResult extends DeviceJobResultBase {
+  kind: "centrifuge";
+}
+
+export interface ThermocyclerResult extends DeviceJobResultBase {
+  kind: "thermocycler";
+  trace: { t: number; temp: number }[];
+  program: { label: string; temperature_c: number; seconds: number }[];
+}
+
+export interface PlateReaderResult extends DeviceJobResultBase {
+  kind: "plate_reader";
+  grid: number[][];
+  rows: number;
+  cols: number;
+}
+
+export interface LiquidHandlerResult extends DeviceJobResultBase {
+  kind: "liquid_handler";
+  grid: boolean[][];
+  rows: number;
+  cols: number;
+}
+
+export interface AutoclaveResult extends DeviceJobResultBase {
+  kind: "autoclave";
+  trace: { t: number; temp: number }[];
+}
+
+export type DeviceJobResult =
+  | CentrifugeResult
+  | ThermocyclerResult
+  | PlateReaderResult
+  | LiquidHandlerResult
+  | AutoclaveResult
+  | DeviceJobResultBase;
+
+export interface LabDevice {
+  id: string;
+  laboratory_id: string;
+  name: string;
+  device_type: DeviceType;
+  status: DeviceStatus;
+  capabilities: Record<string, unknown> | null;
+  simulated: boolean;
+  mean_seconds_per_cm3: number;
+  created_at: string;
+  current_job: DeviceJob | null;
+  queue: DeviceJob[];
+  queue_depth: number;
+}
+
+export function fetchLabDevices(token: string, labId: string): Promise<LabDevice[]> {
+  return apiFetch<LabDevice[]>(`/api/v1/labs/${labId}/devices`, { token });
+}
+
+export function createLabDevice(
+  token: string,
+  labId: string,
+  data: {
+    name: string;
+    device_type?: DeviceType;
+    capabilities?: Record<string, unknown> | null;
+    mean_seconds_per_cm3?: number;
+  },
+): Promise<LabDevice> {
+  return apiFetch<LabDevice>(`/api/v1/labs/${labId}/devices`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      name: data.name,
+      device_type: data.device_type ?? "printer_3d",
+      capabilities: data.capabilities ?? null,
+      mean_seconds_per_cm3: data.mean_seconds_per_cm3 ?? 12,
+    }),
+  });
+}
+
+export function updateLabDevice(
+  token: string,
+  deviceId: string,
+  data: {
+    name?: string;
+    status?: DeviceStatus;
+    capabilities?: Record<string, unknown> | null;
+    mean_seconds_per_cm3?: number;
+  },
+): Promise<LabDevice> {
+  return apiFetch<LabDevice>(`/api/v1/devices/${deviceId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteLabDevice(token: string, deviceId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/devices/${deviceId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function submitPrintJob(
+  token: string,
+  labId: string,
+  data: {
+    artifact_id: string;
+    device_id?: string | null;
+    copies?: number;
+  },
+): Promise<{ jobs: DeviceJob[] }> {
+  return apiFetch<{ jobs: DeviceJob[] }>(`/api/v1/labs/${labId}/devices/print`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      artifact_id: data.artifact_id,
+      device_id: data.device_id ?? null,
+      copies: data.copies ?? 1,
+    }),
+  });
+}
+
+/** Build the SSE URL for a lab's live device stream. */
+export function deviceStreamUrl(labId: string): string {
+  return buildApiUrl(`/api/v1/labs/${labId}/devices/stream`);
+}
+
+// ---------------------------------------------------------------------------
+// Experiment runner (M11)
+// ---------------------------------------------------------------------------
+
+export type ExperimentStepKind = "fabricate" | "device_job";
+
+export interface FabricateStep {
+  kind: "fabricate";
+  label: string;
+  prompt: string;
+}
+
+export interface DeviceJobStep {
+  kind: "device_job";
+  label: string;
+  device_type: DeviceType;
+  params: Record<string, unknown>;
+}
+
+export type ExperimentStep = FabricateStep | DeviceJobStep;
+
+export interface ExperimentProtocol {
+  title: string;
+  summary: string;
+  steps: ExperimentStep[];
+}
+
+export type StepStatus = "pending" | "running" | "complete" | "failed" | "skipped";
+
+export interface StepRunState {
+  status: StepStatus;
+  dispatched_id: string | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  /** Per-device-type post-completion report, copied from the dispatched
+   *  device job when the step finishes. Null for fabricate steps and
+   *  while the step is still running. */
+  result: DeviceJobResult | null;
+}
+
+export type ExperimentStatus = "proposed" | "running" | "complete" | "failed";
+
+export interface ExperimentRunState {
+  protocol: ExperimentProtocol;
+  step_states: StepRunState[];
+  status: ExperimentStatus;
 }

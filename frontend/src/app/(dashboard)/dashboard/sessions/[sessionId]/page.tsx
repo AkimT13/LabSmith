@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { LabPrintQueuePanel } from "@/components/dashboard/lab-print-queue-panel";
 import { ArtifactList } from "@/components/sessions/artifact-list";
 import { ChatPanel } from "@/components/sessions/chat-panel";
 import { ViewerPanel } from "@/components/sessions/viewer-panel";
@@ -183,7 +184,7 @@ export default function SessionDetailPage() {
         </div>
       </div>
 
-      {sessionType === "part_design" ? (
+      {sessionType === "part_design" && (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
           <ChatPanel
             key={session.id}
@@ -205,26 +206,69 @@ export default function SessionDetailPage() {
               error={artifactsError}
               onRefresh={loadArtifacts}
               onSelectArtifact={(artifact) => setSelectedArtifactId(artifact.id)}
+              labId={lab.id}
+            />
+
+            <LabPrintQueuePanel
+              labId={lab.id}
+              sessionArtifactIds={artifacts.map((a) => a.id)}
             />
 
             <ViewerPanel artifact={previewArtifact} loadingArtifacts={artifactsLoading} />
           </div>
         </div>
-      ) : (
+      )}
+
+      {sessionType === "experiment" && (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
+          <ChatPanel
+            key={session.id}
+            sessionId={session.id}
+            sessionType={sessionType}
+            initialSpec={session.current_spec}
+            disabled={session.status === "archived"}
+            disabledReason="Archived sessions are read-only."
+            labId={lab.id}
+            onArtifactGenerated={() => {
+              setSelectedArtifactId(null);
+              return loadArtifacts();
+            }}
+          />
+
+          <div className="space-y-4">
+            <LabPrintQueuePanel
+              labId={lab.id}
+              sessionArtifactIds={artifacts.map((a) => a.id)}
+              title="Live device queue"
+              showWhenIdle
+            />
+            <ArtifactList
+              artifacts={artifacts}
+              selectedArtifactId={previewArtifact?.id ?? null}
+              loading={artifactsLoading}
+              error={artifactsError}
+              onRefresh={loadArtifacts}
+              onSelectArtifact={(artifact) => setSelectedArtifactId(artifact.id)}
+              labId={lab.id}
+            />
+            <ViewerPanel artifact={previewArtifact} loadingArtifacts={artifactsLoading} />
+          </div>
+        </div>
+      )}
+
+      {sessionType === "onboarding" && (
         <div className="space-y-4">
-          {sessionType === "onboarding" && (
-            <Card className="border-dashed">
-              <CardContent className="py-4">
-                <p className="text-sm text-muted-foreground">
-                  Onboarding sessions answer questions about this lab using
-                  whatever documents an admin has uploaded under{" "}
-                  <span className="font-medium">Lab settings → Documents</span>.
-                  Without uploaded docs you&apos;ll still get general checklist
-                  guidance per topic.
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          <Card className="border-dashed">
+            <CardContent className="py-4">
+              <p className="text-sm text-muted-foreground">
+                Onboarding sessions answer questions about this lab using
+                whatever documents an admin has uploaded under{" "}
+                <span className="font-medium">Lab settings → Documents</span>.
+                Without uploaded docs you&apos;ll still get general checklist
+                guidance per topic.
+              </p>
+            </CardContent>
+          </Card>
           <ChatPanel
             key={session.id}
             sessionId={session.id}
@@ -240,7 +284,9 @@ export default function SessionDetailPage() {
 }
 
 function normalizeSessionType(sessionType: string | null | undefined): SessionType {
-  if (sessionType === "onboarding" || sessionType === "ONBOARDING") return "onboarding";
+  const normalized = (sessionType ?? "").toLowerCase();
+  if (normalized === "onboarding") return "onboarding";
+  if (normalized === "experiment") return "experiment";
   return "part_design";
 }
 
@@ -250,6 +296,8 @@ function sessionTypeLabel(sessionType: SessionType): string {
       return "Part design";
     case "onboarding":
       return "Onboarding";
+    case "experiment":
+      return "Experiment";
     default:
       return "Session";
   }

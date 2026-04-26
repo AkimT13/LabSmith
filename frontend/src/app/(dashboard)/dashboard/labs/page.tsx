@@ -22,7 +22,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ConfirmDeleteDialog } from "@/components/dashboard/confirm-delete-dialog";
 import { EntityFormDialog } from "@/components/dashboard/entity-form-dialog";
+import { LabDevicesSection } from "@/components/dashboard/lab-devices-section";
 import { LabDocumentsSection } from "@/components/dashboard/lab-documents-section";
+import { LabPrintQueuePanel } from "@/components/dashboard/lab-print-queue-panel";
 import { SessionFormDialog } from "@/components/dashboard/session-form-dialog";
 import {
   Dialog,
@@ -467,6 +469,10 @@ function LabsWorkspace() {
       </div>
 
       <div className="grid gap-4">
+        {selectedLab && (
+          <LabPrintQueuePanel labId={selectedLab.id} title="Lab print queue" />
+        )}
+
         <section className="min-h-[520px] rounded-lg border bg-card">
           {selectedLab ? (
             <>
@@ -878,6 +884,11 @@ function LabsWorkspace() {
               </section>
 
               <LabDocumentsSection
+                labId={selectedLab.id}
+                userRole={selectedLab.role}
+              />
+
+              <LabDevicesSection
                 labId={selectedLab.id}
                 userRole={selectedLab.role}
               />
