@@ -91,6 +91,9 @@ async def preview_artifact(
     artifact, _design_session = await _resolve_artifact_and_session(
         db, artifact_id=artifact_id, user=current_user
     )
+    if artifact.artifact_type != ArtifactType.STL:
+        raise HTTPException(status_code=415, detail="Artifact preview only supports STL")
+
     etag = _etag_for(artifact)
 
     # Honor If-None-Match so the browser doesn't re-download bytes that haven't

@@ -43,6 +43,10 @@ export async function apiFetch<T>(
 }
 
 export function buildApiUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) {
+    return path;
+  }
+
   if (!/^https?:\/\//.test(API_BASE_URL)) {
     throw new ApiError(
       0,
@@ -183,6 +187,8 @@ export interface Artifact {
   validation: Record<string, unknown> | null;
   version: number;
   created_at: string;
+  download_url: string | null;
+  preview_url: string | null;
 }
 
 // API calls
@@ -243,6 +249,31 @@ export function fetchMessages(token: string, sessionId: string): Promise<Message
 
 export function fetchArtifacts(token: string, sessionId: string): Promise<Artifact[]> {
   return apiFetch<Artifact[]>(`/api/v1/sessions/${sessionId}/artifacts`, { token });
+}
+
+export async function fetchArtifactResponse(
+  token: string,
+  url: string,
+  options: { ifNoneMatch?: string; signal?: AbortSignal } = {},
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  if (options.ifNoneMatch) {
+    headers["If-None-Match"] = options.ifNoneMatch;
+  }
+
+  const response = await fetch(buildApiUrl(url), {
+    headers,
+    signal: options.signal,
+  });
+
+  if (!response.ok && response.status !== 304) {
+    throw new ApiError(response.status, await readErrorMessage(response));
+  }
+
+  return response;
 }
 
 export async function postChat(

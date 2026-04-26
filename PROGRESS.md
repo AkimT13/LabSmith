@@ -478,25 +478,28 @@ The backend now persists artifact bytes to disk and serves them through real dow
   - `artifact_storage_key()` enforces the canonical key shape: `sessions/<session_id>/artifacts/<artifact_id>-v<version>.<ext>`. Version is folded into the filename so re-generation never overwrites prior bytes — keeps `If-None-Match` cache valid.
 - **Mock-mode placeholder STL** (`backend/app/services/placeholder_stl.py`): a deterministic 10mm unit cube, 684 bytes binary STL. `_run_generation` now writes it via the storage backend in mock mode and populates real `file_path` + `file_size_bytes` on the artifact row. M5 will replace the byte source with real CadQuery output without changing the persistence path.
 - **`GET /api/v1/artifacts/{id}/download`**: serves the stored bytes with `Content-Disposition: attachment; filename="<slug>-v<version>.<ext>"` (RFC 5987 fallback for non-ASCII titles), `Cache-Control: private, no-cache`, correct `Content-Length`. 404 when `file_path` is null or bytes are missing on disk.
-- **`GET /api/v1/artifacts/{id}/preview`**: serves bytes inline (no `Content-Disposition`), with `ETag: "<artifact_id>:v<version>"` and `Cache-Control: private, max-age=300`. Honors `If-None-Match` for `304 Not Modified` so the browser doesn't re-download identical bytes after a `generation_complete` event.
+- **`GET /api/v1/artifacts/{id}/preview`**: serves STL bytes inline (no `Content-Disposition`), with `ETag: "<artifact_id>:v<version>"` and `Cache-Control: private, max-age=300`. Honors `If-None-Match` for `304 Not Modified` so the browser doesn't re-download identical bytes after a `generation_complete` event. Non-STL artifacts return `415`.
 - **`ArtifactResponse` schema** now exposes computed `download_url` and `preview_url` fields. Both are null when `file_path` is null; `preview_url` is also null for non-STL artifacts so the viewer cleanly degrades to its empty state. The frontend never builds these URLs by hand.
 - Auth + lab membership rules unchanged: same `_resolve_artifact_and_session` helper checks the caller is at least a viewer of the artifact's lab.
+- CORS now exposes `ETag`, `Content-Disposition`, and `Content-Length` so browser-side preview/download code can read cache and filename metadata.
 - New config in `app/config.py`: `storage_backend` (default `"local"`) and `storage_dir`.
 - `.gitignore` now ignores `backend/storage/` so dev artifacts don't get committed.
 
 #### Tests
 - `backend/tests/test_storage.py` — 10 tests covering save/read/exists/delete roundtrip, missing-key errors, parent-dir creation, absolute-path + parent-traversal rejection, key-shape contract, singleton behavior.
-- `backend/tests/test_artifact_endpoints.py` — 6 tests covering download with correct headers + bytes, preview with ETag, `304 Not Modified` on matching `If-None-Match`, response shape includes `download_url` + `preview_url`, 404 for unknown artifacts, 403/404 for non-members of the lab.
+- `backend/tests/test_artifact_endpoints.py` — 7 tests covering download with correct headers + bytes, preview with ETag, `304 Not Modified` on matching `If-None-Match`, response shape includes `download_url` + `preview_url`, 415 for non-STL preview, 404 for unknown artifacts, 403/404 for non-members of the lab.
 - `backend/tests/test_chat_api.py` updated: assertions now confirm mock generation produces non-null `file_path`, real `file_size_bytes` matching the placeholder STL, and that the response carries `download_url` + `preview_url`.
 - `backend/tests/conftest.py` autouse fixture redirects `LABSMITH_STORAGE_DIR` to a per-test tmp directory, so the suite never accumulates artifact bytes in the dev tree.
 
-Full backend suite: **41 tests passing** (29 → 41, +12 new — 10 storage + 6 artifact endpoint − 4 already counted differently above; actual delta is +16).
+Full backend suite: **42 tests passing**.
 
 #### What the frontend agent can build against right now
 - `GET /api/v1/sessions/{id}/artifacts` returns artifacts whose responses include `download_url` and `preview_url` fields.
 - `GET /api/v1/artifacts/{id}/preview` returns real STL bytes (mock placeholder cube for now), `Content-Type: model/stl`, ETag-cached.
 - `GET /api/v1/artifacts/{id}/download` returns the same bytes as a `Content-Disposition: attachment` payload. Frontend should fetch with the Clerk Bearer token, then trigger the download via `Blob` → `URL.createObjectURL` → synthetic `<a download>` click (since plain `<a href>` can't carry the auth header).
 - After a `generation_complete` SSE event, the artifact list refresh already returns the new artifact with a populated `preview_url`. The `<StlViewer>` reload-on-event pattern from the contract works against today's backend.
+- `frontend/src/lib/api.ts` includes `fetchArtifactResponse()` for authenticated artifact byte requests and API-relative URL normalization via `buildApiUrl()`.
+- `frontend/src/components/sessions/artifact-list.tsx` now uses authenticated fetch for downloads and reads filenames from `Content-Disposition`.
 
 #### Open work for M4 backend (likely after frontend integrates)
 - Streaming response (`iter_bytes`) for large artifacts. Today the route reads the whole file into memory — fine for the placeholder cube (684 B) and small CadQuery output, but should switch when files exceed ~10MB.

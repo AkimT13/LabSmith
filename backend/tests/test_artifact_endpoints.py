@@ -10,10 +10,11 @@ import pytest
 from app.auth.clerk import get_current_user
 from app.database import async_session_factory, engine
 from app.main import app
+from app.models.artifact import Artifact, ArtifactType
 from app.models.user import User
 from app.services.placeholder_stl import get_placeholder_stl_bytes
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 pytestmark = pytest.mark.asyncio
 
@@ -92,6 +93,25 @@ async def test_artifact_response_includes_download_and_preview_urls() -> None:
         assert artifact["preview_url"] == f"/api/v1/artifacts/{artifact['id']}/preview"
         assert artifact["file_path"] is not None
         assert artifact["file_size_bytes"] == len(get_placeholder_stl_bytes())
+
+
+async def test_preview_returns_415_for_non_stl_artifact() -> None:
+    await _require_database()
+    user = await _create_user("nonstl")
+
+    async with _client_as(user) as client:
+        artifact = await _generate_artifact(client, prompt=_TMA_PROMPT, lab_name="STEP Lab")
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(Artifact).where(Artifact.id == uuid.UUID(artifact["id"]))
+            )
+            stored_artifact = result.scalar_one()
+            stored_artifact.artifact_type = ArtifactType.STEP
+            await db.commit()
+
+        response = await client.get(f"/api/v1/artifacts/{artifact['id']}/preview")
+        assert response.status_code == 415
 
 
 async def test_download_returns_404_for_unknown_artifact() -> None:

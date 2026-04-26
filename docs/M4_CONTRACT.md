@@ -4,6 +4,16 @@
 
 This pins the API surface between the M4 backend (artifact storage + download/preview routes) and the M4 frontend (3D STL viewer + download buttons). Both agents code against this; final integration is via PR.
 
+## Amendment Notes For Akim's Agent
+
+These notes were added after the M4 backend landing and the frontend/backend integration review. They label the contract changes that were made so follow-up agents do not keep implementing the stale guidance:
+
+- **Backend CORS amendment:** browser JS must be able to read `ETag`, `Content-Disposition`, and `Content-Length`, so `CORSMiddleware` exposes those headers.
+- **Preview endpoint amendment:** `/api/v1/artifacts/{id}/preview` is STL-only. Non-STL artifacts return `415`.
+- **URL handling amendment:** `download_url` and `preview_url` are API-relative paths. Frontend code must normalize them through `buildApiUrl()` or use `fetchArtifactResponse()`.
+- **Auth/download amendment:** artifact preview/download routes require the Clerk Bearer token. Plain `<a href>` links and URL-based `STLLoader/useLoader(url)` are not valid for authenticated bytes.
+- **ETag amendment:** frontend code must handle `304 Not Modified` by reusing cached STL bytes/geometry.
+
 ---
 
 ## 1. Goal
@@ -24,10 +34,10 @@ The `Artifact.file_path` column stores a **storage key**, not an absolute filesy
 ### Key scheme
 
 ```
-sessions/<session_id>/artifacts/<artifact_id>.<ext>
+sessions/<session_id>/artifacts/<artifact_id>-v<version>.<ext>
 ```
 
-Example: `sessions/3a91.../artifacts/0468.../v1.stl`
+Example: `sessions/3a91.../artifacts/0468...-v1.stl`
 
 The version is folded into the filename so re-generation creates new files instead of clobbering. The exact filename format is a backend implementation detail — the frontend only ever sees artifact IDs and uses them in URLs. Don't rely on filename shape from the frontend side.
 
@@ -81,6 +91,8 @@ Content-Length: <size>
 Cache-Control: private, no-cache
 ```
 
+**Amendment note:** because frontend downloads are triggered through authenticated `fetch()`, backend CORS must expose `Content-Disposition` and `Content-Length`.
+
 **Body:** raw artifact bytes.
 
 **Errors:**
@@ -106,12 +118,15 @@ ETag: "<artifact_id>:v<version>"
 **Body:** raw artifact bytes.
 
 **Errors:** same as `download`.
+- `415` — artifact is not `stl`; M4 preview only supports STL bytes
 
 The frontend MUST send the ETag back as `If-None-Match` on subsequent requests for the same artifact; backend responds `304 Not Modified` to avoid re-shipping bytes the browser already has.
 
+**Amendment note:** backend CORS must expose `ETag` and `Content-Length`. Frontend code must treat `304` as a cache hit, not an error.
+
 ### Existing endpoints unchanged
 
-- `GET /api/v1/sessions/{session_id}/artifacts` — already shipped in M3, returns `Artifact[]`. M4 adds a `file_url` field (see §4).
+- `GET /api/v1/sessions/{session_id}/artifacts` — already shipped in M3, returns `Artifact[]`. M4 adds `download_url` and `preview_url` fields (see §4).
 
 ### MIME type mapping
 
@@ -151,6 +166,8 @@ export interface Artifact {
 
 The Pydantic `ArtifactResponse` computes these fields server-side. The frontend never builds these URLs by hand — if the backend says null, there's no preview/download.
 
+**Amendment note:** these URLs are API-relative paths. Frontend code must pass them through `buildApiUrl()` or use `fetchArtifactResponse()` before calling `fetch()`.
+
 `preview_url` returning null lets the viewer cleanly show the empty-state for non-STL or unbuilt artifacts.
 
 ---
@@ -177,7 +194,7 @@ If `LABSMITH_CHAT_MOCK=false` and no real CAD provider is configured, generation
 npm install three @types/three @react-three/fiber @react-three/drei
 ```
 
-`drei`'s `useLoader` + `STLLoader` from `three/examples/jsm/loaders/STLLoader` is the canonical pattern. The viewer is a client component.
+The viewer is a client component. Use `STLLoader` from `three/examples/jsm/loaders/STLLoader.js`, but parse authenticated bytes with `STLLoader.parse(arrayBuffer)` after a Clerk-authenticated `fetch`. Do not use URL-based `useLoader(preview_url)` because it cannot attach the Bearer token.
 
 ### New files
 
@@ -189,9 +206,9 @@ frontend/src/components/sessions/
 
 ### Updated files
 
-- `frontend/src/components/sessions/artifact-list.tsx` — add download button (`<a href={artifact.download_url} download>` is enough; no JS needed). Disable when `download_url` is null.
+- `frontend/src/components/sessions/artifact-list.tsx` — add download button that does authenticated `fetch(download_url) → blob → URL.createObjectURL → synthetic <a download>` click. Disable when `download_url` is null. Plain `<a href>` is not valid because it cannot attach the Clerk Bearer token.
 - `frontend/src/app/(dashboard)/dashboard/sessions/[sessionId]/page.tsx` — replace the placeholder card from M2.4 with a split layout: chat panel (left) + viewer panel (right). On `generation_complete` the page already calls `loadArtifacts()` (it does today via `onArtifactGenerated`). The viewer panel rerenders when the most-recent STL artifact changes.
-- `frontend/src/lib/api.ts` — add `download_url` and `preview_url` to the `Artifact` type. No new fetcher needed; the viewer fetches `preview_url` directly with `fetch()`.
+- `frontend/src/lib/api.ts` — add `download_url` and `preview_url` to the `Artifact` type. Add or use a helper such as `fetchArtifactResponse()` that normalizes API-relative URLs with `buildApiUrl()` and attaches the Clerk Bearer token.
 
 ### Viewer behavior contract
 
@@ -199,7 +216,7 @@ frontend/src/components/sessions/
 - **Loading state**: spinner overlay while `fetch(preview_url)` is in flight.
 - **Error state**: "Couldn't load preview. <retry button>".
 - **Loaded**: `<Canvas>` with the STL geometry, OrbitControls, a grid floor, ambient + directional light, default camera at distance ~3× the model's bounding-sphere radius.
-- **ETag respect**: re-fetching the same `preview_url` after `generation_complete` should not re-download identical bytes — pass `If-None-Match` if the browser doesn't already (it usually does for same-origin GETs).
+- **ETag respect**: re-fetching the same `preview_url` after `generation_complete` should not re-download identical bytes. Store the last `{ artifactId, etag, arrayBuffer/geometry }`, send `If-None-Match`, and on `304 Not Modified` reuse the cached bytes/geometry.
 
 ### Lazy load
 
@@ -225,13 +242,14 @@ This keeps the initial dashboard bundle small.
 
 ### Updated files
 - `backend/app/config.py` — add `storage_backend`, `storage_dir` settings
+- `backend/app/main.py` — expose `ETag`, `Content-Disposition`, and `Content-Length` through CORS.
 - `backend/app/services/chat.py` — `_run_generation` writes the placeholder STL via the storage backend in mock mode, sets `file_path` to the returned key
-- `backend/app/routers/artifacts.py` — fill in `download` and `preview` bodies (currently 501)
+- `backend/app/routers/artifacts.py` — fill in `download` and `preview` bodies (currently 501), and make preview return `415` for non-STL artifacts.
 - `backend/app/schemas/artifacts.py` — add computed `download_url` and `preview_url` fields
 
 ### Tests
 - `backend/tests/test_storage.py` — local filesystem save/read/delete roundtrip with a temp dir
-- `backend/tests/test_artifact_endpoints.py` — verify download returns bytes with correct headers, preview returns inline, both 404 when file_path is null, both 403 for non-members
+- `backend/tests/test_artifact_endpoints.py` — verify download returns bytes with correct headers, preview returns inline, preview returns `415` for non-STL artifacts, both 404 when file_path is null, both 403/404 for non-members
 - Existing `test_chat_api.py` — update assertions to confirm mock generation now produces non-null `file_path` and `file_size_bytes` matching the placeholder STL size
 
 ---
@@ -268,13 +286,16 @@ Mentioned so neither agent accidentally builds them:
 
 ```ts
 // inside <StlViewer> when preview_url changes
-const response = await fetch(artifact.preview_url, {
-  credentials: "include",
-  headers: { Authorization: `Bearer ${token}` },
+const response = await fetchArtifactResponse(token, artifact.preview_url, {
+  ifNoneMatch: cached?.etag,
 });
-if (!response.ok) throw new Error(`Preview failed: ${response.status}`);
+if (response.status === 304 && cached) {
+  return cached.geometry;
+}
 const buffer = await response.arrayBuffer();
+const etag = response.headers.get("etag");
 const geometry = stlLoader.parse(buffer);
+cache = { artifactId: artifact.id, etag, buffer, geometry };
 // ... feed into <mesh geometry={geometry} />
 ```
 

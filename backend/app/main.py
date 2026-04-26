@@ -34,6 +34,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["ETag", "Content-Disposition", "Content-Length"],
 )
 
 @app.exception_handler(Exception)
