@@ -5,9 +5,12 @@ import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { dismissToast, getToasts, subscribeToasts } from "@/lib/toast";
+import type { Toast } from "@/lib/toast";
+
+const EMPTY_TOASTS: Toast[] = [];
 
 export function Toaster() {
-  const toasts = useSyncExternalStore(subscribeToasts, getToasts, () => []);
+  const toasts = useSyncExternalStore(subscribeToasts, getToasts, getServerToasts);
 
   if (toasts.length === 0) return null;
 
@@ -47,4 +50,8 @@ export function Toaster() {
       ))}
     </div>
   );
+}
+
+function getServerToasts() {
+  return EMPTY_TOASTS;
 }
