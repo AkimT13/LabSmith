@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, MessageSquare, RefreshCw, Send } from "lucide-react";
 
 import { MessageBubble } from "@/components/sessions/message-bubble";
@@ -15,6 +15,8 @@ interface ChatPanelProps {
   disabledReason?: string;
   onArtifactGenerated?: () => void | Promise<void>;
 }
+
+const VISIBLE_MESSAGE_LIMIT = 80;
 
 export function ChatPanel({
   sessionId,
@@ -35,10 +37,15 @@ export function ChatPanel({
     sendMessage,
     refreshMessages,
   } = useChat({ sessionId, onArtifactGenerated });
+  const visibleMessages = useMemo(
+    () => messages.slice(-VISIBLE_MESSAGE_LIMIT),
+    [messages],
+  );
+  const hiddenMessageCount = Math.max(messages.length - visibleMessages.length, 0);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
-  }, [messages, isStreaming]);
+  }, [visibleMessages, isStreaming]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,7 +64,7 @@ export function ChatPanel({
   }
 
   return (
-    <Card className="min-h-[680px]">
+    <Card className="flex h-[680px] flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -76,7 +83,7 @@ export function ChatPanel({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="flex min-h-[600px] flex-col gap-4">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
           {isLoading && messages.length === 0 && (
             <p className="text-sm text-muted-foreground">Loading messages...</p>
@@ -88,7 +95,13 @@ export function ChatPanel({
             </div>
           )}
 
-          {messages.map((message) => (
+          {hiddenMessageCount > 0 && (
+            <p className="text-center text-xs text-muted-foreground">
+              Showing latest {visibleMessages.length} of {messages.length} messages.
+            </p>
+          )}
+
+          {visibleMessages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
 
