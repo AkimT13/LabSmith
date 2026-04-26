@@ -35,6 +35,9 @@ class PartRequest(BaseModel):
     well_width_mm: float | None = Field(default=None, gt=0)
     well_height_mm: float | None = Field(default=None, gt=0)
     tube_volume_ml: float | None = Field(default=None, gt=0)
+    max_width_mm: float | None = Field(default=None, gt=0)
+    max_depth_mm: float | None = Field(default=None, gt=0)
+    max_height_mm: float | None = Field(default=None, gt=0)
     notes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")

@@ -147,6 +147,7 @@ class PartDesignAgent:
 
         # 3. Validate.
         validation_issues = _validate_part_request(part_request)
+        printability_report = _build_printability_report(part_request)
         has_errors = any(issue["severity"] == "error" for issue in validation_issues)
 
         yield {
@@ -154,6 +155,7 @@ class PartDesignAgent:
             "data": {
                 "part_request": _serialize_part_request(part_request),
                 "validation": validation_issues,
+                "printability": printability_report,
             },
         }
 
@@ -199,6 +201,7 @@ class PartDesignAgent:
             design_session=session,
             part_request=part_request,
             validation_issues=validation_issues,
+            printability_report=printability_report,
             message_id=assistant_message_id,
         )
 
@@ -266,6 +269,7 @@ async def _run_generation(
     design_session: DesignSession,
     part_request: Any,
     validation_issues: list[dict[str, Any]],
+    printability_report: dict[str, Any],
     message_id: uuid.UUID,
 ) -> Artifact:
     """Run the CAD pipeline and persist the generated artifact row."""
@@ -291,7 +295,7 @@ async def _run_generation(
         file_path=None,
         file_size_bytes=None,
         spec_snapshot=_serialize_part_request(part_request),
-        validation={"issues": validation_issues},
+        validation={"issues": validation_issues, "printability": printability_report},
         version=next_version,
     )
     db.add(artifact)
@@ -338,6 +342,12 @@ def _validate_part_request(part_request: Any) -> list[dict[str, Any]]:
         }
         for issue in issues
     ]
+
+
+def _build_printability_report(part_request: Any) -> dict[str, Any]:
+    from labsmith.validation import build_printability_report
+
+    return build_printability_report(part_request)
 
 
 def _serialize_part_request(part_request: Any) -> dict[str, Any]:

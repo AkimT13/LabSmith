@@ -32,6 +32,7 @@ export default function SessionDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [lab, setLab] = useState<Lab | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [artifactsLoading, setArtifactsLoading] = useState(false);
   const [artifactsError, setArtifactsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,7 +128,12 @@ export default function SessionDetailPage() {
   const partTypeLabel =
     sessionType === "part_design" && session.part_type ? formatPartType(session.part_type) : null;
   const previewArtifact =
-    artifacts.find((artifact) => artifact.artifact_type === "stl" && artifact.preview_url) ?? null;
+    artifacts.find(
+      (artifact) =>
+        artifact.id === selectedArtifactId && artifact.artifact_type === "stl" && artifact.preview_url,
+    ) ??
+    artifacts.find((artifact) => artifact.artifact_type === "stl" && artifact.preview_url) ??
+    null;
 
   return (
     <div className="space-y-4">
@@ -185,15 +191,20 @@ export default function SessionDetailPage() {
             initialSpec={session.current_spec}
             disabled={session.status === "archived"}
             disabledReason="Archived sessions are read-only."
-            onArtifactGenerated={loadArtifacts}
+            onArtifactGenerated={() => {
+              setSelectedArtifactId(null);
+              return loadArtifacts();
+            }}
           />
 
           <div className="space-y-4">
             <ArtifactList
               artifacts={artifacts}
+              selectedArtifactId={previewArtifact?.id ?? null}
               loading={artifactsLoading}
               error={artifactsError}
               onRefresh={loadArtifacts}
+              onSelectArtifact={(artifact) => setSelectedArtifactId(artifact.id)}
             />
 
             <ViewerPanel artifact={previewArtifact} loadingArtifacts={artifactsLoading} />

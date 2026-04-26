@@ -85,6 +85,34 @@ def test_parser_converts_single_m_suffix_as_meters() -> None:
     assert result.depth_mm == 40.0
 
 
+def test_parser_extracts_bounding_box_constraints() -> None:
+    parser = RuleBasedParser()
+
+    result = parser.parse(
+        "Create a 4 x 6 tube rack with 11 mm diameter and 15 mm spacing, "
+        "50 mm height, and fit within 100 x 80 x 60 mm"
+    )
+
+    assert result.rows == 4
+    assert result.cols == 6
+    assert result.max_width_mm == 100.0
+    assert result.max_depth_mm == 80.0
+    assert result.max_height_mm == 60.0
+
+
+def test_parser_updates_bounding_box_constraints_from_follow_up() -> None:
+    parser = RuleBasedParser()
+    base = parser.parse("Create a 4 x 6 tube rack with 11 mm diameter and 50 mm height")
+
+    result = parser.parse_update("It needs to fit in a 10 cm by 8 cm drawer", base)
+
+    assert result.rows == 4
+    assert result.cols == 6
+    assert result.max_width_mm == 100.0
+    assert result.max_depth_mm == 80.0
+    assert result.max_height_mm is None
+
+
 def test_parser_updates_existing_tube_rack_from_labeled_short_reply() -> None:
     parser = RuleBasedParser()
     base = parser.parse("Can you make a test tube rack?")

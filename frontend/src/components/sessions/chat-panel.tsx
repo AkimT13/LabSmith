@@ -36,6 +36,7 @@ export function ChatPanel({
     messages,
     currentSpec,
     validationIssues,
+    printability,
     generation,
     isLoading,
     isStreaming,
@@ -130,7 +131,12 @@ export function ChatPanel({
             <MessageBubble key={message.id} message={message} />
           ))}
 
-          <SpecCard spec={currentSpec} validationIssues={validationIssues} generation={generation} />
+          <SpecCard
+            spec={currentSpec}
+            validationIssues={validationIssues}
+            printability={printability}
+            generation={generation}
+          />
 
           {isStreaming && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

@@ -142,6 +142,9 @@ _PART_REQUEST_SCHEMA: dict[str, Any] = {
         "well_width_mm",
         "well_height_mm",
         "tube_volume_ml",
+        "max_width_mm",
+        "max_depth_mm",
+        "max_height_mm",
         "notes",
     ],
     "properties": {
@@ -200,6 +203,27 @@ _PART_REQUEST_SCHEMA: dict[str, Any] = {
                 "given explicitly."
             ),
         },
+        "max_width_mm": {
+            "type": ["number", "null"],
+            "description": (
+                "Maximum allowed outside width in millimeters when the user gives "
+                "a fit constraint, drawer size, footprint, or bounding box."
+            ),
+        },
+        "max_depth_mm": {
+            "type": ["number", "null"],
+            "description": (
+                "Maximum allowed outside depth in millimeters when the user gives "
+                "a fit constraint, drawer size, footprint, or bounding box."
+            ),
+        },
+        "max_height_mm": {
+            "type": ["number", "null"],
+            "description": (
+                "Maximum allowed outside height in millimeters when the user gives "
+                "a fit constraint, drawer size, footprint, or bounding box."
+            ),
+        },
         "notes": {
             "type": "array",
             "items": {"type": "string"},
@@ -238,6 +262,10 @@ _EXTRACTION_SYSTEM_PROMPT = (
     "\n"
     "Units: every dimension is millimeters unless the user uses a different "
     "unit, in which case convert. Tube volumes stay in mL.\n"
+    "Fit constraints: if the user says the part must fit in a drawer, box, "
+    "printer bed, footprint, envelope, or maximum bounding box, populate "
+    "max_width_mm, max_depth_mm, and max_height_mm when those dimensions are "
+    "available. For 2D footprints, populate max_width_mm and max_depth_mm.\n"
     "\n"
     "Field mapping by part type:\n"
     "- tube_rack: rows, cols, diameter_mm (tube hole), spacing_mm, depth_mm "

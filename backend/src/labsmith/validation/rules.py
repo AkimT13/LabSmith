@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from labsmith.models import PartRequest, PartType, ValidationIssue, ValidationSeverity
+from labsmith.validation.printability import estimate_part_dimensions
 
 
 def validate_part_request(request: PartRequest) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     issues.extend(_validate_required(request))
     issues.extend(_validate_spacing(request))
+    issues.extend(_validate_bounding_box(request, issues))
     issues.extend(_validate_size(request))
     return issues
 
@@ -82,6 +84,39 @@ def _validate_spacing(request: PartRequest) -> list[ValidationIssue]:
                 code="thin_wall",
                 field="spacing_mm",
                 message="Spacing leaves less than 1.0 mm of material between openings.",
+            )
+        )
+    return issues
+
+
+def _validate_bounding_box(
+    request: PartRequest, existing_issues: list[ValidationIssue]
+) -> list[ValidationIssue]:
+    if not any([request.max_width_mm, request.max_depth_mm, request.max_height_mm]):
+        return []
+    if any(issue.code == "missing_parameter" for issue in existing_issues):
+        return []
+
+    dimensions = estimate_part_dimensions(request)
+    checks = [
+        ("max_width_mm", "width", dimensions.width_mm, request.max_width_mm),
+        ("max_depth_mm", "depth", dimensions.depth_mm, request.max_depth_mm),
+        ("max_height_mm", "height", dimensions.height_mm, request.max_height_mm),
+    ]
+
+    issues: list[ValidationIssue] = []
+    for field, label, actual, limit in checks:
+        if limit is None or actual <= limit:
+            continue
+        issues.append(
+            ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                code="exceeds_bounding_box",
+                field=field,
+                message=(
+                    f"Estimated {label} is {actual:.1f} mm, which exceeds the "
+                    f"{limit:.1f} mm fit constraint."
+                ),
             )
         )
     return issues

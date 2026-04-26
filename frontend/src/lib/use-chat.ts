@@ -10,6 +10,7 @@ import {
   type ArtifactType,
   type Message,
   type PartRequest,
+  type PrintabilityReport,
   type ValidationIssue,
 } from "@/lib/api";
 
@@ -41,6 +42,7 @@ interface TextDeltaPayload {
 interface SpecParsedPayload {
   part_request: PartRequest;
   validation: ValidationIssue[];
+  printability?: PrintabilityReport;
 }
 
 interface GenerationStartedPayload {
@@ -70,6 +72,7 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentSpec, setCurrentSpec] = useState<PartRequest | null>(initialSpec);
   const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
+  const [printability, setPrintability] = useState<PrintabilityReport | null>(null);
   const [generation, setGeneration] = useState<GenerationState>({ status: "idle" });
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -120,6 +123,7 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
         const data = payload as SpecParsedPayload;
         setCurrentSpec(data.part_request);
         setValidationIssues(data.validation ?? []);
+        setPrintability(data.printability ?? null);
         return;
       }
 
@@ -246,6 +250,7 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
     messages,
     currentSpec,
     validationIssues,
+    printability,
     generation,
     isLoading,
     isStreaming,

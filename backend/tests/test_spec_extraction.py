@@ -150,7 +150,7 @@ async def test_openai_extractor_parses_valid_response() -> None:
         response_json='{"part_type": "tube_rack", "rows": 4, "cols": 6, '
         '"well_count": 24, "diameter_mm": 11, "spacing_mm": 15, "depth_mm": 40, '
         '"well_width_mm": null, "well_height_mm": null, "tube_volume_ml": null, '
-        '"notes": []}'
+        '"max_width_mm": null, "max_depth_mm": null, "max_height_mm": null, "notes": []}'
     )
 
     result = await extractor.extract(user_content="4x6 rack with 11mm tubes")
@@ -170,7 +170,8 @@ async def test_openai_extractor_returns_none_when_part_type_is_null() -> None:
         response_json='{"part_type": null, "rows": null, "cols": null, '
         '"well_count": null, "diameter_mm": null, "spacing_mm": null, '
         '"depth_mm": null, "well_width_mm": null, "well_height_mm": null, '
-        '"tube_volume_ml": null, "notes": []}'
+        '"tube_volume_ml": null, "max_width_mm": null, "max_depth_mm": null, '
+        '"max_height_mm": null, "notes": []}'
     )
 
     result = await extractor.extract(user_content="hi how are you")

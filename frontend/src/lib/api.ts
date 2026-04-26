@@ -159,6 +159,9 @@ export interface PartRequest {
   well_width_mm: number | null;
   well_height_mm: number | null;
   tube_volume_ml: number | null;
+  max_width_mm: number | null;
+  max_depth_mm: number | null;
+  max_height_mm: number | null;
   notes: string[];
 }
 
@@ -167,6 +170,36 @@ export interface ValidationIssue {
   code: string;
   message: string;
   field: string | null;
+}
+
+export interface PrintabilityCheck {
+  code: string;
+  status: "pass" | "warning" | "error" | "unknown";
+  message: string;
+}
+
+export interface PrintabilityReport {
+  dimensions_mm: {
+    width: number;
+    depth: number;
+    height: number;
+  };
+  bed_mm: {
+    width: number;
+    depth: number;
+    height: number;
+  };
+  material_estimate: {
+    volume_cm3: number;
+    mass_g: number;
+    method: string;
+  };
+  checks: PrintabilityCheck[];
+}
+
+export interface ArtifactValidation {
+  issues?: ValidationIssue[];
+  printability?: PrintabilityReport;
 }
 
 export interface Message {
@@ -186,7 +219,7 @@ export interface Artifact {
   file_path: string | null;
   file_size_bytes: number | null;
   spec_snapshot: Record<string, unknown> | null;
-  validation: Record<string, unknown> | null;
+  validation: ArtifactValidation | null;
   version: number;
   created_at: string;
   download_url: string | null;

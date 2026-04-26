@@ -49,6 +49,11 @@ DIMENSION_END_PATTERN = (
     r"(?=\s*(?:[,.;]|and\b|with\b|tube\b|diameter\b|spacing\b|depth\b|"
     r"width\b|height\b|length\b|tall\b|$))"
 )
+BOUNDING_CONTEXT_PATTERN = re.compile(
+    r"\b(fit|fits|inside|within|drawer|bed|box|space|footprint|envelope|"
+    r"maximum|max|under|less than|no larger|no bigger|no wider|no taller|"
+    r"no deeper|at most)\b"
+)
 
 TUBE_DIAMETER_BY_VOLUME_ML: dict[float, float] = {
     0.2: 6.0,
@@ -105,6 +110,7 @@ class RuleBasedParser:
         width = self._extract_dimension(normalized, "width")
         height = self._extract_dimension(normalized, "height")
         tube_volume = self._extract_volume(normalized)
+        max_width, max_depth, max_height = self._extract_bounding_box(normalized)
 
         if diameter is not None:
             request.diameter_mm = diameter
@@ -129,6 +135,15 @@ class RuleBasedParser:
             changed = True
         if tube_volume is not None:
             request.tube_volume_ml = tube_volume
+            changed = True
+        if max_width is not None:
+            request.max_width_mm = max_width
+            changed = True
+        if max_depth is not None:
+            request.max_depth_mm = max_depth
+            changed = True
+        if max_height is not None:
+            request.max_height_mm = max_height
             changed = True
 
         if require_change and not changed and self._mentions_dimension_label(normalized):
@@ -160,8 +175,17 @@ class RuleBasedParser:
         return int(match.group(1)) if match else None
 
     def _extract_grid(self, text: str, count: int | None) -> tuple[int | None, int | None]:
-        grid_match = re.search(r"(\d+)\s*(?:x|by)\s*(\d+)", text)
-        if grid_match:
+        for grid_match in re.finditer(r"(\d+)\s*(?:x|by)\s*(\d+)", text):
+            prefix = text[max(0, grid_match.start() - 40) : grid_match.start()]
+            suffix = text[grid_match.end() : grid_match.end() + 24]
+            # Dimension constraints like "fit within 120 x 80 x 50 mm" are
+            # parsed as a bounding box, not as a 120-by-80 rack grid.
+            if re.match(r"\s*(?:x|by)\s*\d", suffix):
+                continue
+            if re.match(rf"\s*(?:{DIMENSION_UNIT_PATTERN})\b", suffix):
+                continue
+            if BOUNDING_CONTEXT_PATTERN.search(prefix):
+                continue
             return int(grid_match.group(1)), int(grid_match.group(2))
         if count in STANDARD_GRIDS:
             return STANDARD_GRIDS[count]
@@ -186,10 +210,92 @@ class RuleBasedParser:
                 return float(match.group(1)) * DIMENSION_UNITS_TO_MM[unit]
         return None
 
+    def _extract_bounding_box(
+        self, text: str
+    ) -> tuple[float | None, float | None, float | None]:
+        max_width = self._extract_dimension_limit(text, "width")
+        max_depth = self._extract_dimension_limit(text, "depth")
+        max_height = self._extract_dimension_limit(text, "height")
+        max_height = max_height or self._extract_dimension_limit(text, "tall")
+
+        for match in re.finditer(
+            rf"(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?\s*"
+            rf"(?:x|by)\s*"
+            rf"(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?"
+            rf"(?:\s*(?:x|by)\s*"
+            rf"(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?)?",
+            text,
+        ):
+            before = text[max(0, match.start() - 48) : match.start()]
+            after = text[match.end() : match.end() + 48]
+            has_unit = any(match.group(index) for index in (2, 4, 6))
+            has_constraint_before = BOUNDING_CONTEXT_PATTERN.search(before) is not None
+            has_constraint_after = (
+                BOUNDING_CONTEXT_PATTERN.search(after) is not None
+                and (has_unit or match.group(5) is not None)
+            )
+            if not (has_constraint_before or has_constraint_after):
+                continue
+
+            unit = match.group(6) or match.group(4) or match.group(2) or ""
+            first_unit = match.group(2) or unit
+            second_unit = match.group(4) or unit
+            third_unit = match.group(6) or unit
+
+            max_width = max_width or float(match.group(1)) * DIMENSION_UNITS_TO_MM[first_unit]
+            max_depth = max_depth or float(match.group(3)) * DIMENSION_UNITS_TO_MM[second_unit]
+            if match.group(5) is not None:
+                max_height = max_height or float(match.group(5)) * DIMENSION_UNITS_TO_MM[third_unit]
+            break
+
+        return max_width, max_depth, max_height
+
+    def _extract_dimension_limit(self, text: str, label: str) -> float | None:
+        label_pattern = "height|tall" if label in {"height", "tall"} else label
+        patterns = [
+            rf"(?:max(?:imum)?|at most|under|less than|no more than|no larger than)\s+"
+            rf"(?:{label_pattern})\s*(?:of|is|=|:)?\s*"
+            rf"(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?\b",
+            rf"(?:{label_pattern})\s*(?:must be|should be|is|=|:)?\s*"
+            rf"(?:under|less than|no more than|no larger than|at most|<=)\s*"
+            rf"(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?\b",
+        ]
+        if label == "width":
+            patterns.append(
+                rf"no\s+wider\s+than\s*(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?\b"
+            )
+        if label in {"height", "tall"}:
+            patterns.append(
+                rf"no\s+taller\s+than\s*(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?\b"
+            )
+        if label == "depth":
+            patterns.append(
+                rf"no\s+deeper\s+than\s*(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?\b"
+            )
+
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                unit = match.group(2) or ""
+                return float(match.group(1)) * DIMENSION_UNITS_TO_MM[unit]
+        return None
+
     def _mentions_dimension_label(self, text: str) -> bool:
         return any(
             re.search(rf"\b{label}\b", text)
-            for label in ("diameter", "spacing", "depth", "width", "height", "length", "tall")
+            for label in (
+                "diameter",
+                "spacing",
+                "depth",
+                "width",
+                "height",
+                "length",
+                "tall",
+                "drawer",
+                "bed",
+                "footprint",
+                "envelope",
+            )
         )
 
     def _extract_volume(self, text: str) -> float | None:

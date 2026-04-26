@@ -2,22 +2,32 @@
 
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Download, FileBox, Loader2, RefreshCw } from "lucide-react";
+import { Download, Eye, FileBox, Loader2, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchArtifactResponse, type Artifact } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 interface ArtifactListProps {
   artifacts: Artifact[];
+  selectedArtifactId?: string | null;
   loading: boolean;
   error: string | null;
   onRefresh: () => void | Promise<void>;
+  onSelectArtifact?: (artifact: Artifact) => void;
 }
 
-export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactListProps) {
+export function ArtifactList({
+  artifacts,
+  selectedArtifactId = null,
+  loading,
+  error,
+  onRefresh,
+  onSelectArtifact,
+}: ArtifactListProps) {
   const { getToken } = useAuth();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -111,35 +121,58 @@ export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactL
         )}
 
         {artifacts.length > 0 && (
-          <div className="max-h-[75px] space-y-3 overflow-y-auto pr-1">
+          <div className="max-h-[236px] space-y-2 overflow-y-auto pr-1">
             {artifacts.map((artifact) => (
-              <div key={artifact.id} className="rounded-md border p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">{artifact.artifact_type.toUpperCase()}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Version {artifact.version} · {new Date(artifact.created_at).toLocaleString()}
-                    </p>
+              <div
+                key={artifact.id}
+                className={cn(
+                  "flex items-start gap-2 rounded-md border p-2 transition",
+                  selectedArtifactId === artifact.id && "border-foreground bg-muted/40",
+                )}
+              >
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() => onSelectArtifact?.(artifact)}
+                  disabled={!artifact.preview_url}
+                  aria-label={`Preview ${artifact.artifact_type.toUpperCase()} version ${artifact.version}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {artifact.artifact_type.toUpperCase()} v{artifact.version}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(artifact.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {selectedArtifactId === artifact.id && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-background px-2 py-1 text-xs font-medium">
+                        <Eye className="h-3 w-3" />
+                        Preview
+                      </span>
+                    )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
-                      {formatFileSize(artifact.file_size_bytes)}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      onClick={() => void handleDownload(artifact)}
-                      disabled={!artifact.download_url || downloadingId !== null}
-                      aria-label={`Download ${artifact.artifact_type.toUpperCase()} artifact`}
-                    >
-                      {downloadingId === artifact.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
+                  <ArtifactTrustSummary artifact={artifact} />
+                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
+                    {formatFileSize(artifact.file_size_bytes)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => void handleDownload(artifact)}
+                    disabled={!artifact.download_url || downloadingId !== null}
+                    aria-label={`Download ${artifact.artifact_type.toUpperCase()} artifact`}
+                  >
+                    {downloadingId === artifact.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                  </Button>
                 </div>
               </div>
             ))}
@@ -147,6 +180,31 @@ export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactL
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ArtifactTrustSummary({ artifact }: { artifact: Artifact }) {
+  const printability = artifact.validation?.printability;
+  if (!printability) {
+    return <p className="mt-2 text-xs text-muted-foreground">No printability report saved.</p>;
+  }
+
+  const warningCount = printability.checks.filter((check) => check.status === "warning").length;
+  const errorCount = printability.checks.filter((check) => check.status === "error").length;
+  const statusLabel =
+    errorCount > 0 ? `${errorCount} issue` : warningCount > 0 ? `${warningCount} warning` : "Checks pass";
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <span>
+        {printability.dimensions_mm.width} x {printability.dimensions_mm.depth} x{" "}
+        {printability.dimensions_mm.height} mm
+      </span>
+      <span>·</span>
+      <span>{printability.material_estimate.mass_g} g PLA est.</span>
+      <span>·</span>
+      <span>{statusLabel}</span>
+    </div>
   );
 }
 

@@ -3,11 +3,12 @@ import { Box, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ValidationBadge } from "@/components/sessions/validation-badge";
 import type { GenerationState } from "@/lib/use-chat";
-import type { PartRequest, ValidationIssue } from "@/lib/api";
+import type { PartRequest, PrintabilityCheck, PrintabilityReport, ValidationIssue } from "@/lib/api";
 
 interface SpecCardProps {
   spec: PartRequest | null;
   validationIssues: ValidationIssue[];
+  printability: PrintabilityReport | null;
   generation: GenerationState;
 }
 
@@ -21,12 +22,15 @@ const specFields: Array<{ key: keyof PartRequest; label: string; suffix?: string
   { key: "well_width_mm", label: "Well width", suffix: "mm" },
   { key: "well_height_mm", label: "Well height", suffix: "mm" },
   { key: "tube_volume_ml", label: "Tube volume", suffix: "mL" },
+  { key: "max_width_mm", label: "Max width", suffix: "mm" },
+  { key: "max_depth_mm", label: "Max depth", suffix: "mm" },
+  { key: "max_height_mm", label: "Max height", suffix: "mm" },
 ];
 
-export function SpecCard({ spec, validationIssues, generation }: SpecCardProps) {
+export function SpecCard({ spec, validationIssues, printability, generation }: SpecCardProps) {
   if (!spec) return null;
 
-  const visibleFields = specFields.filter(({ key }) => spec[key] !== null);
+  const visibleFields = specFields.filter(({ key }) => spec[key] != null);
 
   return (
     <Card>
@@ -80,6 +84,27 @@ export function SpecCard({ spec, validationIssues, generation }: SpecCardProps) 
           </div>
         )}
 
+        {printability && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase text-muted-foreground">Printability</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <SpecRow
+                label="Estimated size"
+                value={`${printability.dimensions_mm.width} x ${printability.dimensions_mm.depth} x ${printability.dimensions_mm.height} mm`}
+              />
+              <SpecRow
+                label="Material estimate"
+                value={`${printability.material_estimate.volume_cm3} cm3 / ${printability.material_estimate.mass_g} g`}
+              />
+            </div>
+            <div className="space-y-2">
+              {printability.checks.map((check) => (
+                <PrintabilityCheckRow key={check.code} check={check} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {generation.status !== "idle" && (
           <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
             {generation.status === "generating" && (
@@ -100,6 +125,29 @@ export function SpecCard({ spec, validationIssues, generation }: SpecCardProps) 
       </CardContent>
     </Card>
   );
+}
+
+function PrintabilityCheckRow({ check }: { check: PrintabilityCheck }) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-md border p-2">
+      <p className="text-sm text-muted-foreground">{check.message}</p>
+      <span
+        className={
+          "shrink-0 rounded-full px-2 py-1 text-xs font-medium " +
+          printabilityStatusClass(check.status)
+        }
+      >
+        {check.status}
+      </span>
+    </div>
+  );
+}
+
+function printabilityStatusClass(status: PrintabilityCheck["status"]) {
+  if (status === "pass") return "bg-emerald-50 text-emerald-700";
+  if (status === "warning") return "bg-amber-50 text-amber-700";
+  if (status === "error") return "bg-destructive/10 text-destructive";
+  return "bg-muted text-muted-foreground";
 }
 
 function SpecRow({ label, value }: { label: string; value: string }) {
