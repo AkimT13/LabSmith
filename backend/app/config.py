@@ -89,6 +89,28 @@ class Settings(BaseSettings):
     designed.
     """
 
+    onboarding_retriever: str = "lexical"
+    """Which retriever the onboarding agent uses to surface document snippets.
+    "lexical" (default) is TF-IDF-style scoring over chunked text — no API key,
+    no network calls, deterministic. "openai" uses the OpenAI embeddings API
+    for semantic match (catches "centrifuge protocol" against "Beckman J6 user
+    manual") and falls back to lexical on any failure, so a misconfigured key
+    never crashes a chat turn."""
+
+    openai_embedding_model: str = "text-embedding-3-small"
+    """Model used by the OpenAI onboarding retriever. The 3-small model is ~$0.02
+    per million tokens, so a typical onboarding turn (query + ~5 chunks) costs
+    well under a cent."""
+
+    onboarding_chunk_max_chars: int = 600
+    """Target chunk size in characters for onboarding document retrieval. Smaller
+    chunks improve precision; larger chunks preserve more context. 600 is a
+    reasonable middle for SOPs and protocols."""
+
+    onboarding_top_k_chunks: int = 3
+    """How many top-scored chunks the retriever returns per turn. The agent uses
+    these to build the document-backed reply and emit `doc_referenced` events."""
+
     openai_chat_system_prompt: str = (
         "You are LabSmith, an assistant for designing 3D-printable laboratory "
         "hardware (tube racks, gel combs, etc.). The user describes a part "

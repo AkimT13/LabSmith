@@ -1,13 +1,22 @@
-"""Deterministic v0 agent for `onboarding` sessions.
+"""Deterministic + retrieval-augmented agent for `onboarding` sessions.
 
 M9 starts with useful, local behavior before adding RAG or uploaded lab docs.
 The agent classifies the user's question into a small orientation topic,
-streams a practical checklist-style answer, and emits onboarding-only events.
-It never parses CAD specs and never creates artifacts.
+retrieves the most relevant snippets from lab-uploaded documents (lexical
+by default; semantic via OpenAI embeddings when configured), streams a
+practical checklist-style answer, and emits onboarding-only events. It
+never parses CAD specs and never creates artifacts.
+
+When real document content is retrieved, the reply incorporates the snippets
+and the agent emits one `doc_referenced` event per cited document so the
+frontend can link to the source. When no relevant chunks are found, the
+agent falls back to the prior "available documents (no semantic match yet)"
+branch — keeping prior tests stable and the v0 contract honored.
 """
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass
@@ -23,6 +32,15 @@ from app.models.message import Message, MessageRole
 from app.models.project import Project
 from app.models.user import User
 from app.services.agents.base import AgentEvent
+from app.services.onboarding_retrieval import (
+    DocumentChunk,
+    ScoredChunk,
+    chunk_document_text,
+    get_retriever,
+)
+from app.services.storage import get_storage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -232,12 +250,32 @@ class OnboardingAgent:
     ) -> AsyncGenerator[AgentEvent, None]:
         topic = _select_topic(user_content)
         context = await _load_context(db, session)
+
+        # Load full text for retrieval. Skips docs whose bytes can't be decoded
+        # (binaries, missing files) — they're still mentioned by title via
+        # `context.document_titles`.
+        retrievable_documents: list[_RetrievableDocument] = []
+        if context.lab_id is not None:
+            retrievable_documents = await _load_documents_with_text(
+                db, lab_id=context.lab_id
+            )
+
+        scored_chunks = await _retrieve(
+            user_content=user_content,
+            documents=retrievable_documents,
+        )
+
+        # Citations: dedup by document_id, preserve top-score order.
+        citations = _build_citations(scored_chunks)
+
         assistant_message_id = uuid.uuid4()
         content = _build_reply(
             topic=topic,
             context=context,
             user=user,
             user_content=user_content,
+            scored_chunks=scored_chunks,
+            citations=citations,
         )
 
         assistant_msg = Message(
@@ -249,7 +287,16 @@ class OnboardingAgent:
                 "agent": "onboarding",
                 "version": "v0",
                 "topic": topic.key,
-                "doc_backed": False,
+                "doc_backed": bool(citations),
+                "retriever": _retriever_name() if citations else None,
+                "cited_documents": [
+                    {
+                        "document_id": str(citation.document_id),
+                        "title": citation.title,
+                        "score": round(citation.score, 4),
+                    }
+                    for citation in citations
+                ],
             },
         )
         db.add(assistant_msg)
@@ -276,6 +323,21 @@ class OnboardingAgent:
                 },
             }
 
+        # `doc_referenced` is reserved for actual document-backed retrieval per
+        # the M9 contract. We only emit when at least one chunk was scored
+        # above zero — title-only listing isn't enough.
+        for citation in citations:
+            yield {
+                "event": "doc_referenced",
+                "data": {
+                    "document_id": str(citation.document_id),
+                    "title": citation.title,
+                    "source": "uploaded document",
+                    "url": f"/api/v1/documents/{citation.document_id}/download",
+                    "score": round(citation.score, 4),
+                },
+            }
+
         async for event in _stream_text(assistant_message_id, content):
             yield event
 
@@ -287,6 +349,11 @@ class OnboardingAgent:
             },
         }
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Topic + context (unchanged from v0)
+# ---------------------------------------------------------------------------
 
 
 def _select_topic(user_content: str) -> OnboardingTopic:
@@ -324,31 +391,6 @@ async def _load_context(db: AsyncSession, session: DesignSession) -> OnboardingC
     )
 
 
-def _build_reply(
-    *,
-    topic: OnboardingTopic,
-    context: OnboardingContext,
-    user: User,
-    user_content: str,
-) -> str:
-    user_name = user.display_name or "there"
-    checklist = _format_checklist(topic.checklist)
-    followups = _format_lines(topic.followups)
-    prompt = user_content.strip()
-    document_note = _build_document_note(context.document_titles)
-
-    return (
-        f"Hi {user_name}. For {context.lab_name} / {context.project_name}, "
-        f"I would treat this as an onboarding question about {topic.label.lower()}.\n\n"
-        f"{document_note}\n\n"
-        f"Your question: {prompt}\n\n"
-        "Suggested checklist:\n"
-        f"{checklist}\n\n"
-        "Good next questions:\n"
-        f"{followups}"
-    )
-
-
 async def _load_document_titles(
     db: AsyncSession,
     lab_id: uuid.UUID,
@@ -362,19 +404,213 @@ async def _load_document_titles(
     return tuple(result.scalars().all())
 
 
-def _build_document_note(document_titles: Sequence[str]) -> str:
-    if not document_titles:
+# ---------------------------------------------------------------------------
+# Document retrieval (M9)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _RetrievableDocument:
+    document_id: uuid.UUID
+    title: str
+    chunks: tuple[DocumentChunk, ...]
+
+
+@dataclass(frozen=True)
+class _Citation:
+    document_id: uuid.UUID
+    title: str
+    score: float
+    snippet: str
+
+
+async def _load_documents_with_text(
+    db: AsyncSession,
+    *,
+    lab_id: uuid.UUID,
+) -> list[_RetrievableDocument]:
+    """Fetch lab documents + decoded text + chunks. Membership scoping is
+    enforced by the caller (we look up by lab_id, which only flows through
+    `_load_context` after the session-membership check in the chat dispatcher)."""
+    result = await db.execute(
+        select(LabDocument)
+        .where(LabDocument.laboratory_id == lab_id)
+        .order_by(LabDocument.created_at.desc())
+    )
+    documents = list(result.scalars().all())
+    if not documents:
+        return []
+
+    storage = get_storage()
+    out: list[_RetrievableDocument] = []
+    for document in documents:
+        text = await _read_document_text(storage, document)
+        if text is None or not text.strip():
+            continue
+        chunks = chunk_document_text(
+            document_id=document.id,
+            document_title=document.title,
+            text=text,
+        )
+        if not chunks:
+            continue
+        out.append(
+            _RetrievableDocument(
+                document_id=document.id,
+                title=document.title,
+                chunks=tuple(chunks),
+            )
+        )
+    return out
+
+
+async def _read_document_text(storage: object, document: LabDocument) -> str | None:
+    """Best-effort UTF-8 decode of a document's stored bytes. Returns None for
+    binaries or missing files; the agent silently skips those for retrieval
+    while still listing them by title in the fallback note."""
+    try:
+        data: bytes = await storage.read(document.file_path)  # type: ignore[attr-defined]
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning(
+            "Skipping document %s for retrieval: storage read failed (%s)",
+            document.id,
+            exc,
+        )
+        return None
+
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        logger.info(
+            "Skipping document %s for retrieval: not UTF-8 decodable", document.id
+        )
+        return None
+
+
+async def _retrieve(
+    *,
+    user_content: str,
+    documents: list[_RetrievableDocument],
+) -> list[ScoredChunk]:
+    if not documents:
+        return []
+    pool: list[DocumentChunk] = []
+    for doc in documents:
+        pool.extend(doc.chunks)
+    if not pool:
+        return []
+
+    retriever = get_retriever()
+    return await retriever.retrieve(
+        query=user_content,
+        chunks=pool,
+        top_k=settings.onboarding_top_k_chunks,
+    )
+
+
+def _build_citations(scored_chunks: Sequence[ScoredChunk]) -> list[_Citation]:
+    """Dedup chunks down to one citation per document, keeping the highest
+    score and a short snippet from the best-scoring chunk."""
+    seen: dict[uuid.UUID, _Citation] = {}
+    for sc in scored_chunks:
+        existing = seen.get(sc.chunk.document_id)
+        if existing is None or sc.score > existing.score:
+            seen[sc.chunk.document_id] = _Citation(
+                document_id=sc.chunk.document_id,
+                title=sc.chunk.document_title,
+                score=sc.score,
+                snippet=_short_snippet(sc.chunk.text),
+            )
+    # Preserve top-score order.
+    return sorted(seen.values(), key=lambda c: c.score, reverse=True)
+
+
+def _short_snippet(text: str, *, max_chars: int = 240) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 1].rstrip() + "…"
+
+
+def _retriever_name() -> str:
+    return (settings.onboarding_retriever or "lexical").lower()
+
+
+# ---------------------------------------------------------------------------
+# Reply assembly
+# ---------------------------------------------------------------------------
+
+
+def _build_reply(
+    *,
+    topic: OnboardingTopic,
+    context: OnboardingContext,
+    user: User,
+    user_content: str,
+    scored_chunks: Sequence[ScoredChunk],
+    citations: Sequence[_Citation],
+) -> str:
+    user_name = user.display_name or "there"
+    checklist = _format_checklist(topic.checklist)
+    followups = _format_lines(topic.followups)
+    prompt = user_content.strip()
+    document_note = _build_document_note(
+        document_titles=context.document_titles,
+        scored_chunks=scored_chunks,
+        citations=citations,
+    )
+
+    return (
+        f"Hi {user_name}. For {context.lab_name} / {context.project_name}, "
+        f"I would treat this as an onboarding question about {topic.label.lower()}.\n\n"
+        f"{document_note}\n\n"
+        f"Your question: {prompt}\n\n"
+        "Suggested checklist:\n"
+        f"{checklist}\n\n"
+        "Good next questions:\n"
+        f"{followups}"
+    )
+
+
+def _build_document_note(
+    *,
+    document_titles: Sequence[str],
+    scored_chunks: Sequence[ScoredChunk],
+    citations: Sequence[_Citation],
+) -> str:
+    # Three branches:
+    #   (1) no documents at all -> orientation guidance only
+    #   (2) documents exist but no chunks scored above zero -> list titles, say
+    #       semantic match didn't fire (kept stable for older tests)
+    #   (3) documents exist AND retrieval found relevant snippets -> incorporate
+    #       snippets and cite the source documents
+    if not document_titles and not scored_chunks:
         return (
             "I do not have uploaded lab documents connected yet, so this is "
             "general orientation guidance rather than lab policy."
         )
 
-    documents = _format_lines(document_titles)
+    if not citations:
+        documents = _format_lines(document_titles)
+        return (
+            "I can see uploaded lab document records, but semantic search and "
+            "citations are not connected yet. Use this as orientation guidance "
+            "and verify against these available documents:\n"
+            f"{documents}"
+        )
+
+    snippet_lines = "\n\n".join(
+        f"- {citation.title}: {citation.snippet}" for citation in citations
+    )
+    citation_lines = _format_lines(
+        [f"{citation.title} (relevance {citation.score:.2f})" for citation in citations]
+    )
     return (
-        "I can see uploaded lab document records, but semantic search and "
-        "citations are not connected yet. Use this as orientation guidance "
-        "and verify against these available documents:\n"
-        f"{documents}"
+        "Based on your lab documents, here's what's most relevant to this "
+        "question:\n\n"
+        f"{snippet_lines}\n\n"
+        "Sources cited above:\n"
+        f"{citation_lines}"
     )
 
 
