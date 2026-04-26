@@ -18,7 +18,13 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" className="h-full antialiased">
-        <body className="min-h-full flex flex-col">
+        <head>
+          <link
+            rel="stylesheet"
+            href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,800,900&display=swap"
+          />
+        </head>
+        <body className="min-h-full flex flex-col bg-background text-foreground">
           {children}
           <Toaster />
         </body>
