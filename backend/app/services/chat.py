@@ -31,6 +31,7 @@ from app.models.lab_membership import LabRole
 from app.models.message import Message, MessageRole
 from app.models.user import User
 from app.services.access import get_session_with_membership
+from app.services.storage import artifact_storage_key, get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -230,9 +231,11 @@ async def _run_generation(
 ) -> Artifact:
     """Run the CAD pipeline (or mock it) and persist an Artifact row.
 
-    In mock mode we don't write real bytes — `file_path` is None and `file_size_bytes`
-    is a synthetic number. The frontend can still render the artifact list, and M4
-    will fill in real STL bytes via CadQuery.
+    M3 left this as a stub that wrote no bytes. M4 wires it up against the
+    storage abstraction — in mock mode we now write a small placeholder STL
+    (a 10mm unit cube) so the frontend 3D viewer has real geometry to render.
+    M5 will swap the placeholder for real CadQuery output; nothing else here
+    needs to change at that point.
     """
     # Determine next version for this session.
     result = await db.execute(
@@ -247,18 +250,44 @@ async def _run_generation(
     if settings.chat_mock:
         await asyncio.sleep(0.4)  # cosmetic delay so client sees a "generating" phase
 
+    # Insert the artifact row first so we have a stable UUID for the storage key.
     artifact = Artifact(
         session_id=design_session.id,
         message_id=message_id,
         artifact_type=ArtifactType.STL,
         file_path=None,
-        file_size_bytes=12345 if settings.chat_mock else None,
+        file_size_bytes=None,
         spec_snapshot=_serialize_part_request(part_request),
         validation={"issues": validation_issues},
         version=next_version,
     )
     db.add(artifact)
-    await db.flush()  # populate artifact.id without committing the parent transaction
+    await db.flush()
+    await db.refresh(artifact)
+
+    # Resolve the bytes. In mock mode we ship a placeholder unit cube; the real
+    # CadQuery path lands in M5 and will replace this branch.
+    if settings.chat_mock:
+        from app.services.placeholder_stl import get_placeholder_stl_bytes
+
+        artifact_bytes = get_placeholder_stl_bytes()
+    else:
+        # Real generation isn't implemented yet — leave the row pointing at no
+        # file so the frontend can show "preview unavailable" until M5.
+        return artifact
+
+    # Persist to storage and update the row with the real key + size.
+    storage = get_storage()
+    key = artifact_storage_key(
+        session_id=str(design_session.id),
+        artifact_id=str(artifact.id),
+        version=next_version,
+        extension="stl",
+    )
+    stored = await storage.save(key, artifact_bytes, content_type="model/stl")
+    artifact.file_path = stored.key
+    artifact.file_size_bytes = stored.size_bytes
+    await db.flush()
     await db.refresh(artifact)
     return artifact
 

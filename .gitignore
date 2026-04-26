@@ -32,6 +32,7 @@ frontend/.next/
 !.env.local.example
 
 backend/generated/
+backend/storage/
 .claude/
 claude.md
 
