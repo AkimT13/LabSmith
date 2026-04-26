@@ -112,12 +112,36 @@ function SpecRow({ label, value }: { label: string; value: string }) {
 }
 
 function formatSpecLabel(spec: PartRequest, key: keyof PartRequest, fallback: string) {
-  if (spec.part_type === "tube_rack") {
-    if (key === "diameter_mm") return "Tube diameter";
-    if (key === "depth_mm") return "Tube height";
-  }
-  return fallback;
+  return PART_FIELD_LABELS[spec.part_type]?.[key] ?? fallback;
 }
+
+const PART_FIELD_LABELS: Partial<
+  Record<PartRequest["part_type"], Partial<Record<keyof PartRequest, string>>>
+> = {
+  tube_rack: {
+    diameter_mm: "Tube diameter",
+    depth_mm: "Tube height",
+  },
+  gel_comb: {
+    well_count: "Tooth count",
+    well_width_mm: "Tooth width",
+    well_height_mm: "Tooth thickness",
+    depth_mm: "Tooth depth",
+  },
+  pipette_tip_rack: {
+    rows: "Tip rows",
+    cols: "Tip columns",
+    well_count: "Tip count",
+    diameter_mm: "Tip slot diameter",
+    spacing_mm: "Tip spacing",
+    depth_mm: "Rack height",
+  },
+  petri_dish_stand: {
+    well_count: "Dish slots",
+    diameter_mm: "Dish diameter",
+    depth_mm: "Stand height",
+  },
+};
 
 function formatPartType(value: string) {
   return value
