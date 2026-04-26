@@ -96,7 +96,8 @@ export type ArtifactType = "stl" | "step" | "spec_json" | "validation_json";
 export type PartType =
   | "tube_rack"
   | "gel_comb"
-  | "multi_well_mold"
+  | "pipette_tip_rack"
+  | "petri_dish_stand"
   | "microfluidic_channel_mold";
 
 export interface Lab {

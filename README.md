@@ -2,7 +2,7 @@
 
 LabSmith is a full-stack scaffold for LabForge AI: an autonomous design agent that turns natural-language laboratory hardware requests into structured CAD generation plans.
 
-The first implementation target is simple, parametric lab hardware such as tube racks, gel electrophoresis combs, and general multi-well molds. The backend owns parsing, validation, CAD template selection, and future STL/STEP export. The frontend owns the interactive TypeScript user experience.
+The first implementation target is simple, parametric lab hardware such as tube racks, gel electrophoresis combs, pipette tip racks, and petri dish stands. The backend owns parsing, validation, CAD template selection, and future STL/STEP export. The frontend owns the interactive TypeScript user experience.
 
 ## Repository layout
 
@@ -95,9 +95,11 @@ If local services already occupy the default ports, override `POSTGRES_PORT`, `B
 
 - Tube rack
 - Gel electrophoresis comb
-- Real STL generation for tube racks and gel electrophoresis combs
+- Pipette tip rack
+- Petri dish stand
+- Real STL generation for supported part-design sessions
 
-The broader product roadmap still includes multi-well molds and basic microfluidic channel molds, but those templates are not registered for artifact generation until the geometry and validation rules are defined.
+The broader product roadmap still includes basic microfluidic channel molds, but that template is not registered for artifact generation until the geometry and validation rules are defined.
 
 ## Example prompts
 

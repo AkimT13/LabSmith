@@ -8,7 +8,8 @@ The first target is **simple, high-value, parametric lab parts** such as:
 
 * tube racks
 * gel electrophoresis combs
-* simple multi-well molds
+* pipette tip racks
+* petri dish stands
 
 The product should feel like a lightweight design copilot for labs: a user describes a needed part, the system extracts structured parameters, chooses a template, generates geometry with CadQuery, validates manufacturability, and exports STL/STEP.
 

@@ -79,34 +79,8 @@ async def test_gel_comb_generates_real_stl_with_requested_dimensions() -> None:
 
 
 # ---------------------------------------------------------------------------
-# New M9 part types — multi-well mold, pipette tip rack, petri dish stand
+# New M9 part types — pipette tip rack, petri dish stand
 # ---------------------------------------------------------------------------
-
-
-async def test_multi_well_mold_generates_real_stl() -> None:
-    """8x12 SBS-format well plate with 6mm wells, 9mm spacing, 10mm depth.
-    Plate width = (12-1)*9 + 6 + 2*plate_margin. plate_margin = max(6, 5) = 6 → 117.
-    Plate depth = (8-1)*9 + 6 + 12 = 81. Plate thickness = 10 + 3 = 13.
-    """
-    request = PartRequest(
-        part_type=PartType.MULTI_WELL_MOLD,
-        rows=8,
-        cols=12,
-        well_count=96,
-        diameter_mm=6.0,
-        depth_mm=10.0,
-        spacing_mm=9.0,
-    )
-
-    artifacts = await generate_cad_artifacts(request)
-    assert len(artifacts) == 1
-    artifact = artifacts[0]
-    assert artifact.artifact_type == ArtifactType.STL
-
-    bounds = assert_valid_stl(artifact.data)
-    assert_close(bounds.width, 117.0)
-    assert_close(bounds.depth, 81.0)
-    assert_close(bounds.height, 13.0)
 
 
 async def test_pipette_tip_rack_generates_real_stl() -> None:

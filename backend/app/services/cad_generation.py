@@ -43,8 +43,6 @@ def _generate_cad_artifacts_sync(part_request: PartRequest) -> list[GeneratedCad
         model = _build_tube_rack(cq, part_request)
     elif part_request.part_type == PartType.GEL_COMB:
         model = _build_gel_comb(cq, part_request)
-    elif part_request.part_type == PartType.MULTI_WELL_MOLD:
-        model = _build_multi_well_mold(cq, part_request)
     elif part_request.part_type == PartType.PIPETTE_TIP_RACK:
         model = _build_pipette_tip_rack(cq, part_request)
     elif part_request.part_type == PartType.PETRI_DISH_STAND:
@@ -155,43 +153,6 @@ def _build_gel_comb(cq: Any, request: PartRequest) -> Any:
         model = model.union(tooth)
 
     return model
-
-
-def _build_multi_well_mold(cq: Any, request: PartRequest) -> Any:
-    """A flat plate with a grid of cylindrical recessed wells.
-
-    Geometry: a single plate with downward-facing wells (cavities), suitable
-    for casting agarose, PDMS, or similar materials. The wells don't go through
-    — they're blind holes from the top so cast material has a floor.
-
-    Plate thickness is `well_depth + 3 mm` (the floor under each well).
-    """
-    rows = request.rows or 8
-    cols = request.cols or 12
-    well_diameter = request.diameter_mm or 6.0
-    well_depth = request.depth_mm or 10.0
-    spacing = request.spacing_mm or 9.0
-    plate_margin = max(6.0, well_diameter / 2 + 2.0)
-    floor_thickness = 3.0
-
-    width = (cols - 1) * spacing + well_diameter + plate_margin * 2
-    depth = (rows - 1) * spacing + well_diameter + plate_margin * 2
-    plate_thickness = well_depth + floor_thickness
-
-    well_points = [
-        ((col - (cols - 1) / 2) * spacing, (row - (rows - 1) / 2) * spacing)
-        for row in range(rows)
-        for col in range(cols)
-    ]
-
-    return (
-        cq.Workplane("XY")
-        .box(width, depth, plate_thickness)
-        .faces(">Z")
-        .workplane()
-        .pushPoints(well_points)
-        .hole(well_diameter, well_depth)
-    )
 
 
 def _build_pipette_tip_rack(cq: Any, request: PartRequest) -> Any:

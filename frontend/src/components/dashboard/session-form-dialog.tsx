@@ -170,7 +170,7 @@ function SessionFormBody({
           className={INPUT_CLASS}
           value={sessionTitle}
           onChange={(event) => setSessionTitle(event.target.value)}
-          placeholder="e.g. 96-well plate prototype"
+          placeholder="e.g. Tube rack prototype"
           autoFocus
         />
       </div>

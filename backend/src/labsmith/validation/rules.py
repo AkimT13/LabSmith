@@ -19,7 +19,6 @@ def _validate_required(request: PartRequest) -> list[ValidationIssue]:
     required_by_part = {
         PartType.TUBE_RACK: ["rows", "cols", "diameter_mm", "depth_mm"],
         PartType.GEL_COMB: ["well_count", "well_width_mm", "well_height_mm", "depth_mm"],
-        PartType.MULTI_WELL_MOLD: ["rows", "cols", "diameter_mm", "depth_mm"],
         PartType.PIPETTE_TIP_RACK: ["rows", "cols", "diameter_mm", "depth_mm"],
         PartType.PETRI_DISH_STAND: ["well_count", "diameter_mm", "depth_mm"],
     }
@@ -43,11 +42,6 @@ def _missing_parameter_message(part_type: PartType, field: str) -> str:
             return "Tube diameter is required. What is the tube diameter in mm?"
         if field == "depth_mm":
             return "Tube height is required. How tall is the tube in mm?"
-    if part_type == PartType.MULTI_WELL_MOLD:
-        if field == "diameter_mm":
-            return "Well diameter is required. How wide are the wells in mm?"
-        if field == "depth_mm":
-            return "Well depth is required. How deep are the wells in mm?"
     if part_type == PartType.PIPETTE_TIP_RACK:
         if field == "diameter_mm":
             return "Tip slot diameter is required. What's the tip's outer diameter in mm?"

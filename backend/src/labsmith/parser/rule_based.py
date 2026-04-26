@@ -153,13 +153,6 @@ class RuleBasedParser:
             return PartType.GEL_COMB
         if "microfluidic" in text:
             return PartType.MICROFLUIDIC_CHANNEL_MOLD
-        if (
-            "multi-well" in text
-            or "multiwell" in text
-            or "well plate" in text
-            or "well-plate" in text
-        ):
-            return PartType.MULTI_WELL_MOLD
         raise ValueError("Could not identify a supported lab part type from the prompt.")
 
     def _extract_count(self, text: str, noun: str) -> int | None:
@@ -230,21 +223,6 @@ class RuleBasedParser:
             if request.depth_mm is None:
                 request.depth_mm = 8.0
                 request.notes.append("Defaulted gel comb tooth depth to 8.0 mm.")
-        if request.part_type == PartType.MULTI_WELL_MOLD:
-            if request.rows is None or request.cols is None:
-                request.rows = request.rows or 8
-                request.cols = request.cols or 12
-                request.well_count = request.rows * request.cols
-                request.notes.append("Defaulted well plate to standard 8 x 12 (96-well).")
-            if request.diameter_mm is None:
-                request.diameter_mm = 6.0
-                request.notes.append("Defaulted well diameter to 6.0 mm.")
-            if request.depth_mm is None:
-                request.depth_mm = 10.0
-                request.notes.append("Defaulted well depth to 10.0 mm.")
-            if request.spacing_mm is None:
-                request.spacing_mm = 9.0
-                request.notes.append("Defaulted well spacing to 9.0 mm (SBS standard).")
         if request.part_type == PartType.PIPETTE_TIP_RACK:
             if request.rows is None or request.cols is None:
                 request.rows = request.rows or 8

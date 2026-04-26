@@ -141,13 +141,3 @@ def test_parser_detects_petri_dish_stand() -> None:
     assert result.part_type == PartType.PETRI_DISH_STAND
     assert result.well_count == 5  # default
     assert result.diameter_mm == 90.0  # default
-
-
-def test_parser_detects_multi_well_mold() -> None:
-    parser = RuleBasedParser()
-
-    result = parser.parse("Design a 96 well plate mold")
-
-    assert result.part_type == PartType.MULTI_WELL_MOLD
-    assert result.rows == 8
-    assert result.cols == 12

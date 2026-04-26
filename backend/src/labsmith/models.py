@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field, model_validator
 class PartType(str, Enum):
     TUBE_RACK = "tube_rack"
     GEL_COMB = "gel_comb"
-    MULTI_WELL_MOLD = "multi_well_mold"
     PIPETTE_TIP_RACK = "pipette_tip_rack"
     PETRI_DISH_STAND = "petri_dish_stand"
     MICROFLUIDIC_CHANNEL_MOLD = "microfluidic_channel_mold"

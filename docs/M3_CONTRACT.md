@@ -150,7 +150,8 @@ Already defined in `backend/src/labsmith/models.py` (Pydantic). Mirror in `front
 export type PartType =
   | "tube_rack"
   | "gel_comb"
-  | "multi_well_mold"
+  | "pipette_tip_rack"
+  | "petri_dish_stand"
   | "microfluidic_channel_mold";
 
 export interface PartRequest {
