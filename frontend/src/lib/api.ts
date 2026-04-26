@@ -226,6 +226,18 @@ export interface Artifact {
   preview_url: string | null;
 }
 
+export interface LabDocument {
+  id: string;
+  laboratory_id: string;
+  title: string;
+  source_filename: string | null;
+  content_type: string;
+  file_size_bytes: number;
+  uploaded_by: string;
+  created_at: string;
+  download_url: string;
+}
+
 // API calls
 export function fetchCurrentUser(token: string): Promise<UserProfile> {
   return apiFetch<UserProfile>("/api/v1/auth/me", { token });
@@ -409,6 +421,60 @@ export function removeLabMember(
     method: "DELETE",
     token,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Lab documents (M9)
+// ---------------------------------------------------------------------------
+
+export function fetchLabDocuments(
+  token: string,
+  labId: string,
+): Promise<LabDocument[]> {
+  return apiFetch<LabDocument[]>(`/api/v1/labs/${labId}/documents`, { token });
+}
+
+export function createLabDocument(
+  token: string,
+  labId: string,
+  data: {
+    title: string;
+    content: string;
+    source_filename?: string | null;
+    content_type?: string;
+  },
+): Promise<LabDocument> {
+  return apiFetch<LabDocument>(`/api/v1/labs/${labId}/documents`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      title: data.title,
+      content: data.content,
+      source_filename: data.source_filename ?? null,
+      content_type: data.content_type ?? "text/plain",
+    }),
+  });
+}
+
+/**
+ * Trigger a browser download for a lab document. Documents require an
+ * authenticated request, so a plain `<a href>` won't work — we fetch the
+ * bytes ourselves, wrap them in a blob URL, and synthesize a click.
+ */
+export async function downloadLabDocument(
+  token: string,
+  document: LabDocument,
+): Promise<void> {
+  const response = await fetchArtifactResponse(token, document.download_url);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = window.document.createElement("a");
+  link.href = url;
+  link.download = document.source_filename || `${document.title}.txt`;
+  window.document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function updateProject(

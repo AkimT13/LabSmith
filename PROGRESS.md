@@ -739,9 +739,11 @@ Status: in progress; deterministic v0 + lab document metadata + retrieval-augmen
 - [x] **Citations + `doc_referenced` events** — every cited document produces a `doc_referenced` SSE event with title, document_id, source, and download URL. Assistant message metadata pins `cited_documents` (id, title, score) and `doc_backed: true`.
 - [x] **Membership-scoped retrieval** — documents are loaded by `lab_id` derived from the session's project, so a session in Lab A can never retrieve from Lab B even when the same user owns both. Pinned by a regression test.
 - [x] **Pluggable retriever backends** — `LexicalRetriever` (TF-IDF-style, default) and `OpenAIEmbeddingRetriever` (semantic match, falls back to lexical on any failure). Selected via `LABSMITH_ONBOARDING_RETRIEVER`.
+- [x] **Sample lab documents** — six realistic markdown SOPs/policies/rosters at `docs/sample_lab_documents/` plus a README with `curl + jq` upload script and example queries that exercise both lexical and semantic retrieval paths.
+- [x] **Doc upload UI** — Lab Settings dialog now has a Documents section (member+ only) with a paste-text upload form (title + optional source filename + content-type select + textarea), document list with size/date, and an authenticated download button. Lives in `frontend/src/components/dashboard/lab-documents-section.tsx`.
+- [x] **Onboarding-specific frontend panel** — `useChat` now captures `topic_suggested` / `checklist_step` / `doc_referenced` events. New `OnboardingTurnPanel` renders the topic, suggested questions, checklist, and clickable cited-document links inside the chat. `ChatPanel` is session-type-aware (different title, empty state, and input placeholder for onboarding vs design).
 - [ ] Multipart doc upload (current path is JSON text only)
 - [ ] Persistent embedding cache (today: embed per-turn; cheap at current doc sizes but wasted work if collections grow)
-- [ ] Onboarding-specific frontend panel (events render through generic chat today)
 
 ##### M9 retrieval — what shipped on `m9_akim`
 
@@ -776,11 +778,23 @@ Status: in progress; deterministic v0 + lab document metadata + retrieval-augmen
 - `python3 -m ruff check backend/app/services/agents/onboarding.py backend/app/services/onboarding_retrieval.py backend/tests/test_agents.py backend/tests/test_onboarding_retrieval.py` — all green.
 - No frontend changes in this slice (per the contract — onboarding-specific panels are deferred). The chat panel renders the new events through the existing `useChat` hook without modification.
 
+##### Onboarding frontend — what shipped
+
+Frontend pass to make M9 demo-ready, on top of the backend retrieval work above:
+
+- **Lab Documents section** in the existing Lab Settings dialog (`frontend/src/components/dashboard/lab-documents-section.tsx`). Lists uploaded docs with size/upload-date; member+ users get a paste-text upload form (title + optional source filename + content-type select + textarea + submit). Each doc has an authenticated download button that fetches bytes through `downloadLabDocument()` (blob URL → synthesized click, since plain `<a href>` can't carry the Clerk Bearer token).
+- **`useChat` extended** (`frontend/src/lib/use-chat.ts`) to capture the M9 onboarding events: `topic_suggested`, `checklist_step`, `doc_referenced`. New per-turn state `onboardingTopic`, `onboardingChecklist`, `onboardingCitations` resets at the start of each `sendMessage` call and at every new `topic_suggested` event.
+- **`OnboardingTurnPanel`** (`frontend/src/components/sessions/onboarding-turn-panel.tsx`) renders the topic with rationale + suggested questions, the checklist as bordered cards, and citations as clickable links that route through `buildApiUrl()` + the user's auth token.
+- **`ChatPanel` made session-type-aware**: title (`"Onboarding chat"` vs `"Design chat"`), empty state, input placeholder all switch on `sessionType`. The `SpecCard` only shows for design sessions; the `OnboardingTurnPanel` only shows for onboarding sessions.
+- **Session detail page placeholder card** (`/dashboard/sessions/[sessionId]/page.tsx`) updated to point users at "Lab settings → Documents" instead of the stale "until lab document retrieval is connected" copy.
+- New API surface in `lib/api.ts`: `LabDocument` type, `fetchLabDocuments`, `createLabDocument`, `downloadLabDocument`.
+- Verified: `npm --prefix frontend run lint` clean, `npm --prefix frontend run build` green, `python3 -m pytest backend/tests` 126/126.
+
 ##### Open work for M9 follow-up
 
 - Persistent embeddings store (`lab_document_chunks` table or JSONB column on `lab_documents`) so the OpenAI path doesn't re-embed on every turn. Cheap today; matters once collections grow past a handful of docs per lab.
 - Multipart file upload — current `LabDocumentCreate` schema requires the body in a `content: str` JSON field. Fine for SOPs and protocols pasted as text; binaries can't ride this path.
-- Onboarding-specific frontend panel that renders `doc_referenced` events as clickable citations and `checklist_step` events as a real checklist UI. Today both render as generic events through the chat panel.
+- Document delete endpoint + UI — backend currently has no `DELETE /documents/{id}`; UI omits the action.
 - Inline citation markers in the reply text (e.g. `[1]` linking to the cited doc) instead of a "Sources cited above" footer.
 
 ### Akim AM Handoff

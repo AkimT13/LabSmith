@@ -22,6 +22,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ConfirmDeleteDialog } from "@/components/dashboard/confirm-delete-dialog";
 import { EntityFormDialog } from "@/components/dashboard/entity-form-dialog";
+import { LabDocumentsSection } from "@/components/dashboard/lab-documents-section";
 import { SessionFormDialog } from "@/components/dashboard/session-form-dialog";
 import {
   Dialog,
@@ -875,6 +876,11 @@ function LabsWorkspace() {
                   )}
                 </div>
               </section>
+
+              <LabDocumentsSection
+                labId={selectedLab.id}
+                userRole={selectedLab.role}
+              />
             </div>
           </DialogContent>
         </Dialog>

@@ -66,6 +66,51 @@ interface ErrorPayload {
   detail: string;
 }
 
+// M9 onboarding event payloads (per docs/M9_CONTRACT.md §4)
+interface TopicSuggestedPayload {
+  topic: string;
+  label: string;
+  rationale: string;
+  suggested_questions?: string[];
+}
+
+interface ChecklistStepPayload {
+  step_id: string;
+  title: string;
+  detail: string;
+  status: string;
+}
+
+interface DocReferencedPayload {
+  document_id?: string;
+  title: string;
+  source: string;
+  url: string | null;
+  score?: number;
+}
+
+export interface OnboardingTopic {
+  topic: string;
+  label: string;
+  rationale: string;
+  suggestedQuestions: string[];
+}
+
+export interface OnboardingChecklistItem {
+  stepId: string;
+  title: string;
+  detail: string;
+  status: string;
+}
+
+export interface OnboardingCitation {
+  documentId: string | null;
+  title: string;
+  source: string;
+  url: string | null;
+  score: number | null;
+}
+
 export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: UseChatOptions) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
 
@@ -74,6 +119,10 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
   const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
   const [printability, setPrintability] = useState<PrintabilityReport | null>(null);
   const [generation, setGeneration] = useState<GenerationState>({ status: "idle" });
+  // M9 onboarding turn state — reset at the start of each new chat turn.
+  const [onboardingTopic, setOnboardingTopic] = useState<OnboardingTopic | null>(null);
+  const [onboardingChecklist, setOnboardingChecklist] = useState<OnboardingChecklistItem[]>([]);
+  const [onboardingCitations, setOnboardingCitations] = useState<OnboardingCitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -159,6 +208,50 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
         return;
       }
 
+      if (streamEvent.event === "topic_suggested") {
+        const data = payload as TopicSuggestedPayload;
+        setOnboardingTopic({
+          topic: data.topic,
+          label: data.label,
+          rationale: data.rationale,
+          suggestedQuestions: data.suggested_questions ?? [],
+        });
+        // Reset the per-turn onboarding pieces so a re-run of the same
+        // session doesn't leak the previous turn's checklist or citations.
+        setOnboardingChecklist([]);
+        setOnboardingCitations([]);
+        return;
+      }
+
+      if (streamEvent.event === "checklist_step") {
+        const data = payload as ChecklistStepPayload;
+        setOnboardingChecklist((previous) => [
+          ...previous,
+          {
+            stepId: data.step_id,
+            title: data.title,
+            detail: data.detail,
+            status: data.status,
+          },
+        ]);
+        return;
+      }
+
+      if (streamEvent.event === "doc_referenced") {
+        const data = payload as DocReferencedPayload;
+        setOnboardingCitations((previous) => [
+          ...previous,
+          {
+            documentId: data.document_id ?? null,
+            title: data.title,
+            source: data.source,
+            url: data.url,
+            score: typeof data.score === "number" ? data.score : null,
+          },
+        ]);
+        return;
+      }
+
       if (streamEvent.event === "error") {
         const data = payload as ErrorPayload;
         setGeneration({ status: "error" });
@@ -193,6 +286,10 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
 
       setMessages((previous) => [...previous, optimisticMessage]);
       setGeneration({ status: "idle" });
+      // Clear M9 onboarding state so the new turn starts from a blank slate.
+      setOnboardingTopic(null);
+      setOnboardingChecklist([]);
+      setOnboardingCitations([]);
       setError(null);
       setIsStreaming(true);
 
@@ -252,6 +349,9 @@ export function useChat({ sessionId, initialSpec = null, onArtifactGenerated }: 
     validationIssues,
     printability,
     generation,
+    onboardingTopic,
+    onboardingChecklist,
+    onboardingCitations,
     isLoading,
     isStreaming,
     error,
