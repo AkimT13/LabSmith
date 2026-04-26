@@ -14,6 +14,42 @@ STANDARD_GRIDS: dict[int, tuple[int, int]] = {
     384: (16, 24),
 }
 
+DIMENSION_UNITS_TO_MM: dict[str, float] = {
+    "": 1.0,
+    "mm": 1.0,
+    "millimeter": 1.0,
+    "millimeters": 1.0,
+    "cm": 10.0,
+    "centimeter": 10.0,
+    "centimeters": 10.0,
+    "m": 1000.0,
+    "meter": 1000.0,
+    "meters": 1000.0,
+    "in": 25.4,
+    "inch": 25.4,
+    "inches": 25.4,
+    "ft": 304.8,
+    "foot": 304.8,
+    "feet": 304.8,
+    "um": 0.001,
+    "micron": 0.001,
+    "microns": 0.001,
+    "micrometer": 0.001,
+    "micrometers": 0.001,
+    "nm": 0.000001,
+    "nanometer": 0.000001,
+    "nanometers": 0.000001,
+}
+
+DIMENSION_UNIT_PATTERN = (
+    r"millimeters?|centimeters?|micrometers?|nanometers?|meters?|"
+    r"inches|inch|feet|foot|mm|cm|um|nm|in|ft|m"
+)
+DIMENSION_END_PATTERN = (
+    r"(?=\s*(?:[,.;]|and\b|with\b|tube\b|diameter\b|spacing\b|depth\b|"
+    r"width\b|height\b|length\b|tall\b|$))"
+)
+
 TUBE_DIAMETER_BY_VOLUME_ML: dict[float, float] = {
     0.2: 6.0,
     0.5: 8.0,
@@ -95,6 +131,11 @@ class RuleBasedParser:
             request.tube_volume_ml = tube_volume
             changed = True
 
+        if require_change and not changed and self._mentions_dimension_label(normalized):
+            raise ValueError(
+                "I use millimeters by default. Please write tube dimensions as bare "
+                "numbers or recognized units, for example 'diameter 11, height 40'."
+            )
         if require_change and not changed:
             raise ValueError("Could not identify any supported parameter changes from the prompt.")
         return self._apply_part_defaults(request)
@@ -130,16 +171,22 @@ class RuleBasedParser:
 
     def _extract_dimension(self, text: str, label: str) -> float | None:
         patterns = [
-            rf"(\d+(?:\.\d+)?)\s*mm\s+{label}",
-            rf"{label}\s*(?:of|=|:)?\s*(\d+(?:\.\d+)?)\s*mm",
-            rf"(\d+(?:\.\d+)?)\s*millimeter\s+{label}",
-            rf"{label}\s*(?:of|=|:)?\s*(\d+(?:\.\d+)?)\s*millimeters?",
+            rf"(\d+(?:\.\d+)?)\s*({DIMENSION_UNIT_PATTERN})?\b\s+{label}\b",
+            rf"{label}\s*(?:is|of|=|:)?\s*(\d+(?:\.\d+)?)\s*"
+            rf"({DIMENSION_UNIT_PATTERN})?\b{DIMENSION_END_PATTERN}",
         ]
         for pattern in patterns:
             match = re.search(pattern, text)
             if match:
-                return float(match.group(1))
+                unit = match.group(2) or ""
+                return float(match.group(1)) * DIMENSION_UNITS_TO_MM[unit]
         return None
+
+    def _mentions_dimension_label(self, text: str) -> bool:
+        return any(
+            re.search(rf"\b{label}\b", text)
+            for label in ("diameter", "spacing", "depth", "width", "height", "length", "tall")
+        )
 
     def _extract_volume(self, text: str) -> float | None:
         match = re.search(r"(\d+(?:\.\d+)?)\s*ml", text)

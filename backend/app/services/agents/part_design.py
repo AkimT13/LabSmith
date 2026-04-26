@@ -121,6 +121,17 @@ class PartDesignAgent:
         )
 
         if extraction.part_request is None:
+            follow_up = _build_extraction_follow_up(extraction)
+            if follow_up:
+                full_assistant_text = f"{full_assistant_text}{follow_up}"
+                assistant_msg.content = full_assistant_text
+                yield {
+                    "event": "text_delta",
+                    "data": {
+                        "message_id": str(assistant_message_id),
+                        "delta": follow_up,
+                    },
+                }
             assistant_msg.metadata_ = _metadata_for_failed_extraction(extraction)
             yield {
                 "event": "message_complete",
@@ -342,3 +353,11 @@ def _build_validation_follow_up(validation_issues: list[dict[str, Any]]) -> str:
     if not missing_questions:
         return ""
     return " I need one more detail before generating: " + " ".join(missing_questions)
+
+
+def _build_extraction_follow_up(extraction: ExtractionResult) -> str:
+    if not extraction.error:
+        return ""
+    if "unit" not in extraction.error.lower() and "millimeter" not in extraction.error.lower():
+        return ""
+    return f" {extraction.error}"

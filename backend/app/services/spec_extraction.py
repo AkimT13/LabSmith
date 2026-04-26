@@ -109,8 +109,10 @@ class RuleBasedExtractor:
                 previous_request = PartRequest.model_validate(current_spec)
                 updated = parser.parse_update(user_content, previous_request)
                 return ExtractionResult(part_request=updated, source=self.name)
-            except Exception:
-                pass
+            except Exception as exc:
+                return ExtractionResult(
+                    part_request=None, source=self.name, error=str(exc)
+                )
 
         return ExtractionResult(
             part_request=None, source=self.name, error=initial_error

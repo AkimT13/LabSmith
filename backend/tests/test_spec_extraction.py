@@ -17,7 +17,6 @@ from typing import Any
 import pytest
 from app.config import settings
 from app.services.spec_extraction import (
-    ExtractionResult,
     OpenAIExtractor,
     RuleBasedExtractor,
     get_spec_extractor,
@@ -108,6 +107,31 @@ async def test_rule_based_extractor_uses_current_spec_for_iteration() -> None:
     # And other fields preserved from the prior spec
     assert result.part_request.well_count == 10
     assert result.part_request.well_width_mm == 5.0
+
+
+async def test_rule_based_extractor_defaults_short_dimension_reply_to_mm() -> None:
+    extractor = RuleBasedExtractor()
+    current_spec = {
+        "part_type": "tube_rack",
+        "rows": 4,
+        "cols": 6,
+        "well_count": 24,
+        "diameter_mm": None,
+        "spacing_mm": None,
+        "depth_mm": None,
+        "notes": [],
+    }
+    result = await extractor.extract(
+        user_content="diameter is 11, tube height is 40",
+        current_spec=current_spec,
+    )
+
+    assert result.part_request is not None
+    assert result.source == "rule_based"
+    assert result.error is None
+    assert result.part_request.diameter_mm == 11.0
+    assert result.part_request.spacing_mm == 15.0
+    assert result.part_request.depth_mm == 40.0
 
 
 # ---------------------------------------------------------------------------

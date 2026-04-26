@@ -1,3 +1,4 @@
+import pytest
 from labsmith.models import PartType
 from labsmith.parser import RuleBasedParser
 
@@ -43,6 +44,57 @@ def test_parser_updates_existing_tube_rack_from_dimension_reply() -> None:
     assert result.diameter_mm == 11.0
     assert result.spacing_mm == 15.0
     assert result.depth_mm == 50.0
+
+
+def test_parser_defaults_unitless_labeled_dimension_reply_to_mm() -> None:
+    parser = RuleBasedParser()
+    base = parser.parse("Can you make a test tube rack?")
+
+    result = parser.parse_update("diameter is 11, tube height is 40", base)
+
+    assert result.part_type == PartType.TUBE_RACK
+    assert result.diameter_mm == 11.0
+    assert result.spacing_mm == 15.0
+    assert result.depth_mm == 40.0
+
+
+def test_parser_converts_explicit_dimension_units_to_mm() -> None:
+    parser = RuleBasedParser()
+    base = parser.parse("Can you make a test tube rack?")
+
+    result = parser.parse_update(
+        "diameter is 1.1 cm, spacing is 0.5905511811 in, tube height is 0.04 m",
+        base,
+    )
+
+    assert result.part_type == PartType.TUBE_RACK
+    assert result.diameter_mm == 11.0
+    assert result.spacing_mm == pytest.approx(15.0)
+    assert result.depth_mm == 40.0
+
+
+def test_parser_converts_single_m_suffix_as_meters() -> None:
+    parser = RuleBasedParser()
+    base = parser.parse("Can you make a test tube rack?")
+
+    result = parser.parse_update("diameter is 0.011m, tube height is 40", base)
+
+    assert result.part_type == PartType.TUBE_RACK
+    assert result.diameter_mm == 11.0
+    assert result.spacing_mm == 15.0
+    assert result.depth_mm == 40.0
+
+
+def test_parser_updates_existing_tube_rack_from_labeled_short_reply() -> None:
+    parser = RuleBasedParser()
+    base = parser.parse("Can you make a test tube rack?")
+
+    result = parser.parse_update("diameter is 11 mm, tube height is 40 mm", base)
+
+    assert result.part_type == PartType.TUBE_RACK
+    assert result.diameter_mm == 11.0
+    assert result.spacing_mm == 15.0
+    assert result.depth_mm == 40.0
 
 
 def test_parser_extracts_gel_comb_defaults() -> None:
