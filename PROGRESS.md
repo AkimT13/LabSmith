@@ -549,7 +549,7 @@ Branch: `m5_akim`. Backend extraction + onboarding stub + frontend type picker s
 - **Alembic migration** `b6d58704dee5_add_session_type_to_design_sessions.py` adds the column with `server_default='PART_DESIGN'` so existing rows backfill cleanly. Explicitly creates the Postgres enum type via `Enum.create(...)` since asyncpg doesn't auto-create enum types as a side effect of `add_column`.
 - **`SessionAgent` protocol** in `app/services/agents/base.py` — single `async run_turn(db, session, user, user_content) -> AsyncIterator[AgentEvent]` method. Agents own their event catalog; the dispatcher is type-agnostic.
 - **`PartDesignAgent`** in `app/services/agents/part_design.py` — the M3/M4 orchestrator lifted out of `chat.py` verbatim. Same event catalog (`text_delta` → `spec_parsed` → `generation_started` → `generation_complete` → `message_complete`), same persistence path, same mock-mode placeholder STL.
-- **`OnboardingAgent`** in `app/services/agents/onboarding.py` — stub that streams a placeholder reply ("real onboarding lands in M8") via `text_delta` + `message_complete` only. Intentionally minimal so the frontend's existing `useChat` hook needs no new event handlers. M8 will replace the body with real RAG / checklist behavior; the agent class signature stays.
+- **`OnboardingAgent`** in `app/services/agents/onboarding.py` — stub that streams a placeholder reply ("real onboarding lands in M9") via `text_delta` + `message_complete` only. Intentionally minimal so the frontend's existing `useChat` hook needs no new event handlers. M9 will replace the body with real RAG / checklist behavior; the agent class signature stays.
 - **Registry** in `app/services/agents/registry.py` — hardcoded `SessionType → agent instance` mapping. `get_agent_for_session(session)` is the only entry point; raises loudly if a registered `SessionType` value lacks an agent.
 - **`chat.py` slimmed** to a dispatcher: `prepare_chat_turn()` for preflight (unchanged), `stream_chat_turn()` looks up the agent and forwards its events, wrapping in a try/except that converts unhandled errors to a single `error` event.
 - **Schemas updated**: `DesignSessionCreate` accepts `session_type` (defaults to `PART_DESIGN`). `DesignSessionUpdate` does NOT include `session_type` — it's set-once at creation and immutable thereafter, so PATCH attempts to change it are silently dropped by Pydantic. `DesignSessionResponse` now exposes `session_type`.
@@ -557,7 +557,7 @@ Branch: `m5_akim`. Backend extraction + onboarding stub + frontend type picker s
 
 #### Frontend
 - **`SessionType` type** added to `frontend/src/lib/api.ts` (`"part_design" | "onboarding"`). `DesignSession` interface gains the field. `createSession` now accepts an optional `session_type` argument.
-- **Session form dialog** (`session-form-dialog.tsx`) — when in create mode, shows a session-type picker with friendly descriptions ("Part design — describe a 3D-printable part…", "Onboarding (preview) — placeholder, lands in M8…"). Hidden in edit mode because session_type is immutable. The "Part type" field auto-hides when the user picks `onboarding` (it's only meaningful for `part_design`).
+- **Session form dialog** (`session-form-dialog.tsx`) — when in create mode, shows a session-type picker with friendly descriptions ("Part design — describe a 3D-printable part…", "Onboarding — lab orientation guidance"). Hidden in edit mode because session_type is immutable. The "Part type" field auto-hides when the user picks `onboarding` (it's only meaningful for `part_design`).
 - **Workspace page** (`/dashboard/labs`) passes `showSessionType={true}` on create, `false` on edit. The PATCH path explicitly drops `session_type` so the frontend mirrors the backend's immutability rule.
 - **Session detail page** (`/dashboard/sessions/[sessionId]`) routes on `session.session_type`:
   - `part_design` → existing M3/M4 layout (chat panel + artifact list + 3D viewer)
@@ -711,10 +711,12 @@ Status: in progress; local Docker/chat/security/UX hardening is done, deploy-pro
 
 Real implementation of the lab onboarding agent stubbed in M5. Targets the pain point of new lab members not knowing where things are, what protocols apply, who owns what.
 
-- System prompt + tool set (likely RAG over lab-uploaded docs, plus structured questions for unstructured contexts)
-- New event catalog for onboarding (e.g., `doc_referenced`, `topic_suggested`, `checklist_step`)
-- Frontend `<OnboardingSessionView>` component
-- Doc upload + indexing pipeline (likely a separate `Document` model, embeddings via OpenAI or similar)
-- Membership-aware: the agent knows about the lab's existing labs/projects/sessions and can point new members at relevant work
+Status: in progress; deterministic v0 is implemented, document-backed RAG remains.
 
-This is intentionally vague — the design lands when M7 ships. Listing it here keeps the seam visible.
+- [x] `docs/M9_CONTRACT.md` defines onboarding/file-maker ownership boundaries
+- [x] Deterministic onboarding v0 agent
+- [x] Onboarding event catalog coverage (`topic_suggested`, `checklist_step`, `text_delta`, `message_complete`)
+- [x] Frontend onboarding copy updated from placeholder wording
+- [ ] Full RAG over lab-uploaded docs
+- [ ] Doc upload + indexing pipeline (likely a separate `Document` model, embeddings via OpenAI or similar)
+- [ ] Membership-aware document retrieval and citations

@@ -16,7 +16,7 @@ M5 ships two session types:
 | Session type | Backend enum | Agent | Status |
 |---|---|---|---|
 | `part_design` | `SessionType.PART_DESIGN` | `PartDesignAgent` | Existing M3/M4 design flow |
-| `onboarding` | `SessionType.ONBOARDING` | `OnboardingAgent` | Placeholder stub for M8 |
+| `onboarding` | `SessionType.ONBOARDING` | `OnboardingAgent` | Placeholder stub in M5; M9 owns the real implementation |
 
 `part_design` remains the only session type that parses a part spec or creates
 artifacts in M5.
@@ -189,7 +189,8 @@ M6.
 
 ### `onboarding`
 
-This is a stub for M8. It must not emit design-only events.
+This is the M5 stub contract. M9 replaces it with the real onboarding catalog
+in `docs/M9_CONTRACT.md`. It must not emit design-only events.
 
 Events:
 
@@ -261,4 +262,3 @@ To add a session type:
 4. Register it in `app/services/agents/registry.py`.
 5. Document the event catalog here or in the milestone contract that owns it.
 6. Add tests for routing, persistence, and event catalog boundaries.
-

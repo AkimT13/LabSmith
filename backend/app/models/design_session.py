@@ -21,9 +21,8 @@ class SessionType(str, enum.Enum):
     chat turns for this session. Set once at creation; immutable thereafter so
     the message history can't be reinterpreted under different rules.
 
-    `part_design` is the existing M3/M4 design pipeline. `onboarding` is a
-    placeholder slot for the M8 onboarding agent — the registry includes a
-    stub today so the seam is visible.
+    `part_design` is the existing CAD pipeline. `onboarding` is the lab
+    orientation agent introduced in M9.
     """
 
     PART_DESIGN = "part_design"

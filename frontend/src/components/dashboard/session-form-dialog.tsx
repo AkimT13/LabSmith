@@ -37,9 +37,9 @@ const SESSION_TYPE_OPTIONS: SessionTypeOption[] = [
   },
   {
     value: "onboarding",
-    label: "Onboarding (preview)",
+    label: "Onboarding",
     description:
-      "Help a new lab member get oriented. Real onboarding agent lands in milestone 8 — this is a placeholder for now.",
+      "Help a new lab member get oriented with practical checklist-style guidance.",
   },
 ];
 

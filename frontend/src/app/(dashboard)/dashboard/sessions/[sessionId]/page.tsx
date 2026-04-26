@@ -252,10 +252,8 @@ export default function SessionDetailPage() {
             <Card className="border-dashed">
               <CardContent className="py-4">
                 <p className="text-sm text-muted-foreground">
-                  Onboarding sessions are a preview surface today — the full
-                  agent (lab doc retrieval, checklist generation) lands in
-                  milestone 8. The chat below works as a placeholder so you
-                  can take notes and try the flow.
+                  Onboarding sessions provide general checklist-style guidance
+                  until lab document retrieval is connected.
                 </p>
               </CardContent>
             </Card>

@@ -3,7 +3,7 @@
 Verifies:
 - The registry returns the right agent class for each session_type.
 - The chat dispatcher routes to the correct agent based on session.session_type.
-- Onboarding sessions get the placeholder reply (text_delta + message_complete only).
+- Onboarding sessions emit the M9 v0 onboarding catalog and no design events.
 - session_type defaults to "part_design" on creation.
 - session_type is rejected by PATCH /sessions/{id} (it's set-once).
 - The schema response includes session_type.
@@ -129,9 +129,8 @@ async def test_part_design_chat_emits_full_event_sequence() -> None:
         assert types[-1] == "message_complete"
 
 
-async def test_onboarding_chat_emits_only_text_and_complete() -> None:
-    """Onboarding agent's M5 stub catalog: text_delta + message_complete.
-    No spec_parsed, no generation events."""
+async def test_onboarding_chat_emits_v0_catalog_without_design_events() -> None:
+    """Onboarding agent emits M9 onboarding events, but no design-only events."""
     await _require_database()
     user = await _create_user("onboarding_chat")
 
@@ -140,15 +139,39 @@ async def test_onboarding_chat_emits_only_text_and_complete() -> None:
             client, lab_name="Onboarding Chat Lab", session_type="onboarding"
         )
 
-        events = await _post_chat(client, session["id"], "How do I get started?")
+        events = await _post_chat(
+            client,
+            session["id"],
+            "Where is the centrifuge and who owns it?",
+        )
         types = [e["event"] for e in events]
 
+        assert types[0] == "topic_suggested"
+        topic_event = events[0]
+        assert topic_event["data"]["topic"] == "equipment"
+        assert "Equipment" in topic_event["data"]["label"]
+        assert types.count("checklist_step") == 3
         assert "text_delta" in types
         assert types[-1] == "message_complete"
+        complete = events[-1]["data"]["content"]
+        assert "Onboarding Chat Lab / Agent project" in complete
+        assert "I do not have uploaded lab documents connected yet" in complete
+        assert "equipment and locations" in complete.lower()
+
         # The design-only events MUST NOT appear for onboarding sessions
         assert "spec_parsed" not in types
         assert "generation_started" not in types
         assert "generation_complete" not in types
+
+        messages_response = await client.get(f"/api/v1/sessions/{session['id']}/messages")
+        assert messages_response.status_code == 200
+        messages = messages_response.json()
+        assistant = messages[-1]
+        assert assistant["role"] == "assistant"
+        assert assistant["metadata"]["agent"] == "onboarding"
+        assert assistant["metadata"]["version"] == "v0"
+        assert assistant["metadata"]["topic"] == "equipment"
+        assert assistant["metadata"]["doc_backed"] is False
 
         # Onboarding agent does not produce artifacts
         artifacts_response = await client.get(
