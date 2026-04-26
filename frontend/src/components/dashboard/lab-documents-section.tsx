@@ -201,7 +201,9 @@ export function LabDocumentsSection({ labId, userRole }: LabDocumentsSectionProp
               placeholder="Paste the SOP / protocol / policy here..."
             />
             <p className="text-xs text-muted-foreground">
-              JSON text upload only — multipart file upload is on the M9 follow-up list.
+              Paste the document text here — markdown, plain text, or JSON all
+              work, just match the Content type above. Drag-and-drop file
+              upload is on the follow-up list.
             </p>
           </div>
 
