@@ -40,6 +40,8 @@ export function HierarchySidebar() {
   const [tree, setTree] = useState<LabNode[]>([]);
   const [openLabIds, setOpenLabIds] = useState<Set<string>>(new Set());
   const [openProjectIds, setOpenProjectIds] = useState<Set<string>>(new Set());
+  const [collapsedLabIds, setCollapsedLabIds] = useState<Set<string>>(new Set());
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -50,13 +52,8 @@ export function HierarchySidebar() {
   } | null>(null);
 
   const activeSessionLocation = findSessionLocation(tree, activeSessionId);
-  const visibleOpenLabIds = new Set(openLabIds);
-  if (activeLabId) visibleOpenLabIds.add(activeLabId);
-  if (activeSessionLocation) visibleOpenLabIds.add(activeSessionLocation.labId);
-
-  const visibleOpenProjectIds = new Set(openProjectIds);
-  if (activeProjectId) visibleOpenProjectIds.add(activeProjectId);
-  if (activeSessionLocation) visibleOpenProjectIds.add(activeSessionLocation.projectId);
+  const activeSessionLabId = activeSessionLocation?.labId ?? null;
+  const activeSessionProjectId = activeSessionLocation?.projectId ?? null;
 
   const loadTree = useCallback(async () => {
     if (!isLoaded) return;
@@ -108,12 +105,38 @@ export function HierarchySidebar() {
 
   useDataChangedListener(loadTree);
 
+  function labIsOpen(labId: string) {
+    const routeKeepsOpen = activeLabId === labId || activeSessionLabId === labId;
+    return (openLabIds.has(labId) || routeKeepsOpen) && !collapsedLabIds.has(labId);
+  }
+
+  function projectIsOpen(projectId: string) {
+    const routeKeepsOpen = activeProjectId === projectId || activeSessionProjectId === projectId;
+    return (
+      (openProjectIds.has(projectId) || routeKeepsOpen) && !collapsedProjectIds.has(projectId)
+    );
+  }
+
   function toggleLab(labId: string) {
-    setOpenLabIds((current) => toggleId(current, labId));
+    if (labIsOpen(labId)) {
+      setOpenLabIds((current) => removeId(current, labId));
+      setCollapsedLabIds((current) => addId(current, labId));
+      return;
+    }
+
+    setCollapsedLabIds((current) => removeId(current, labId));
+    setOpenLabIds((current) => addId(current, labId));
   }
 
   function toggleProject(projectId: string) {
-    setOpenProjectIds((current) => toggleId(current, projectId));
+    if (projectIsOpen(projectId)) {
+      setOpenProjectIds((current) => removeId(current, projectId));
+      setCollapsedProjectIds((current) => addId(current, projectId));
+      return;
+    }
+
+    setCollapsedProjectIds((current) => removeId(current, projectId));
+    setOpenProjectIds((current) => addId(current, projectId));
   }
 
   async function handleCreateLab(values: { name: string; description: string }) {
@@ -141,6 +164,7 @@ export function HierarchySidebar() {
       description: values.description || null,
     });
     setOpenLabIds((current) => addId(current, createProjectLab.id));
+    setCollapsedLabIds((current) => removeId(current, createProjectLab.id));
     emitDataChanged();
     router.push(projectWorkspaceHref(createProjectLab.id, project.id));
   }
@@ -159,6 +183,8 @@ export function HierarchySidebar() {
     });
     setOpenLabIds((current) => addId(current, createSessionTarget.lab.id));
     setOpenProjectIds((current) => addId(current, createSessionTarget.project.id));
+    setCollapsedLabIds((current) => removeId(current, createSessionTarget.lab.id));
+    setCollapsedProjectIds((current) => removeId(current, createSessionTarget.project.id));
     emitDataChanged();
     router.push(`/dashboard/sessions/${session.id}`);
   }
@@ -199,7 +225,7 @@ export function HierarchySidebar() {
         )}
 
         {tree.map((lab) => {
-          const isLabOpen = visibleOpenLabIds.has(lab.id);
+          const isLabOpen = labIsOpen(lab.id);
           const isActiveLab = activeLabId === lab.id;
 
           return (
@@ -241,7 +267,7 @@ export function HierarchySidebar() {
               {isLabOpen && (
                 <div className="ml-3 space-y-1 border-l pl-3">
                   {lab.projects.map((project) => {
-                    const isProjectOpen = visibleOpenProjectIds.has(project.id);
+                    const isProjectOpen = projectIsOpen(project.id);
                     const isActiveProject = activeProjectId === project.id;
 
                     return (
@@ -367,19 +393,15 @@ function projectWorkspaceHref(labId: string, projectId?: string): string {
   return `/dashboard/labs?${params.toString()}`;
 }
 
-function toggleId(current: Set<string>, id: string): Set<string> {
-  const next = new Set(current);
-  if (next.has(id)) {
-    next.delete(id);
-  } else {
-    next.add(id);
-  }
-  return next;
-}
-
 function addId(current: Set<string>, id: string): Set<string> {
   const next = new Set(current);
   next.add(id);
+  return next;
+}
+
+function removeId(current: Set<string>, id: string): Set<string> {
+  const next = new Set(current);
+  next.delete(id);
   return next;
 }
 
