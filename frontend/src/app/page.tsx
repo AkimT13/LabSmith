@@ -86,7 +86,6 @@ function LandingNav({ isSignedIn }: { isSignedIn: boolean }) {
               </Link>
               <UserButton
                 appearance={{ elements: { avatarBox: "h-8 w-8" } }}
-                afterSignOutUrl="/"
               />
             </>
           ) : (

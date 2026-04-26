@@ -55,8 +55,9 @@ export function LabPrintQueuePanel({
     sessionIds.size > 0 &&
     active.some(
       (d) =>
-        (d.current_job && sessionIds.has(d.current_job.artifact_id)) ||
-        d.queue.some((j) => sessionIds.has(j.artifact_id)),
+        (d.current_job?.artifact_id != null &&
+          sessionIds.has(d.current_job.artifact_id)) ||
+        d.queue.some((j) => j.artifact_id != null && sessionIds.has(j.artifact_id)),
     );
 
   const totalJobs = active.reduce(

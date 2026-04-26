@@ -293,5 +293,6 @@ function defaultState(): StepRunState {
     error: null,
     started_at: null,
     completed_at: null,
+    result: null,
   };
 }
