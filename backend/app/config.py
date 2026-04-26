@@ -38,5 +38,15 @@ class Settings(BaseSettings):
     a real LLM or CAD pipeline. Default true until M3 wires up real LLM and M5 wires
     up real CadQuery export."""
 
+    # Storage / M4
+    storage_backend: str = "local"
+    """Active artifact storage backend. Only "local" is supported in M4. Future
+    backends ("s3", etc.) plug into `app/services/storage.py`."""
+
+    storage_dir: str = "./backend/storage"
+    """Filesystem root for the local storage backend. Created on startup if
+    missing. Tests should override this to a tmp dir to avoid cross-test
+    pollution."""
+
 
 settings = Settings()

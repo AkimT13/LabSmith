@@ -11,6 +11,7 @@ from app.auth.clerk import get_current_user
 from app.database import async_session_factory, engine
 from app.main import app
 from app.models.user import User
+from app.services.placeholder_stl import get_placeholder_stl_bytes
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
@@ -72,6 +73,12 @@ async def test_chat_emits_full_event_sequence_for_valid_prompt() -> None:
         assert len(artifacts) == 1
         assert artifacts[0]["id"] == artifact_id
         assert artifacts[0]["version"] == 1
+        # M4: mock generation now writes a placeholder STL via the storage backend.
+        # file_path + file_size_bytes should be populated and download/preview URLs surfaced.
+        assert artifacts[0]["file_path"] is not None
+        assert artifacts[0]["file_size_bytes"] == len(get_placeholder_stl_bytes())
+        assert artifacts[0]["download_url"] == f"/api/v1/artifacts/{artifact_id}/download"
+        assert artifacts[0]["preview_url"] == f"/api/v1/artifacts/{artifact_id}/preview"
 
 
 async def test_chat_increments_artifact_version_on_re_run() -> None:
