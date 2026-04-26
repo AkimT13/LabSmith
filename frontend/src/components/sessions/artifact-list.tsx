@@ -121,9 +121,6 @@ export function ArtifactList({ artifacts, loading, error, onRefresh }: ArtifactL
                 </Button>
               </div>
             </div>
-            {artifact.file_path && (
-              <p className="mt-2 break-all text-xs text-muted-foreground">{artifact.file_path}</p>
-            )}
           </div>
         ))}
       </CardContent>
