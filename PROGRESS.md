@@ -38,7 +38,7 @@
 
 #### Frontend (Next.js 16 + Clerk + shadcn/ui)
 - Replaced Vite SPA with Next.js 16 + TypeScript + Tailwind CSS v4 + App Router
-- `@clerk/nextjs` for auth — middleware protects all routes except `/`, `/sign-in`, `/sign-up`
+- `@clerk/nextjs` for auth — Next proxy protects all routes except `/`, `/sign-in`, `/sign-up`
 - Removed `next/font/google` usage so production builds do not require fetching Google Fonts; the app now uses a system font stack
 - **Pages**:
   - `/` — Landing page (redirects to dashboard if signed in)
@@ -106,7 +106,7 @@ backend/
 
 frontend/
   src/
-    middleware.ts             # Clerk route protection
+    proxy.ts                  # Clerk route protection
     app/
       layout.tsx              # ClerkProvider + root shell
       page.tsx                # Landing page
@@ -358,7 +358,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
     - Helper functions: `_fetch_clerk_user_profile`, `_profile_from_clerk_payload`, `_profile_from_jwt`.
   - **Webhook continues to be the canonical sync path** for created/updated/deleted users (`POST /api/v1/auth/webhook`). The Clerk Backend API call in `get_current_user` is the fallback for users who hit the API before the webhook fires (or in setups where webhooks aren't configured).
   - **Documented Clerk JWT expectations** (below). Default Clerk session JWTs only include `sub`, `iat`, `exp`, etc. — no profile claims. Two ways to surface real profile data: (a) configure a JWT template in Clerk dashboard, or (b) rely on the Backend API lookup we just added. Option (b) is the default in this repo.
-  - **Documented the Next.js 16 `middleware → proxy` deprecation** (below). Kept `frontend/src/middleware.ts` as-is because `@clerk/nextjs` does not yet ship a `clerkProxy()` equivalent of `clerkMiddleware()` (the `proxy.d.ts` shipped by Clerk is for a different concept — proxying Clerk Frontend API requests, not the Next.js file-convention rename). The build warning is cosmetic; will migrate once Clerk publishes a proxy wrapper.
+  - **Next.js 16 proxy convention**: route protection now lives in `frontend/src/proxy.ts`, using the same Clerk wrapper logic that previously lived in `middleware.ts`.
 - Verified: `npm run backend:test` (20 tests), `npm --prefix frontend run lint`, `npm --prefix frontend run build`.
 
 #### Clerk integration notes (for M3 and beyond)
@@ -377,7 +377,6 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 #### Known warnings (non-blocking)
 
-- **Next.js**: `The "middleware" file convention is deprecated. Please use "proxy" instead.` Cosmetic. Will migrate `frontend/src/middleware.ts` → `proxy.ts` once `@clerk/nextjs` adds a `clerkProxy()` export. Rolling our own `proxy.ts` would mean re-implementing Clerk's middleware logic — not worth the risk before M3.
 - **`react-hooks/set-state-in-effect`**: ESLint rule from React 19 flagging async data-fetch effects. We `// eslint-disable-next-line` those specific lines (sidebar tree fetch, workspace fetch, session detail fetch). The pattern is correct — the rule is a heuristic that doesn't recognize legitimate fetch-on-mount.
 
 ---
