@@ -535,5 +535,93 @@ The session page now renders authenticated STL previews from the M4 artifact end
 - The `download` route currently returns the same bytes regardless of `artifact_type`. Once M5 lands real STEP export, double-check the MIME type (`model/step` vs `application/step`) actually round-trips through browsers cleanly.
 
 ### Subsequent Milestones
-- **M5**: Real CadQuery integration (replace placeholder STL with real geometry)
-- **M6**: Polish + deployment (Docker, error handling, rate limiting)
+
+> **Renumbering note:** the original plan had M5 = real CadQuery. After M4 we decided to insert a "Session Types + Agent Abstraction" milestone first, so CadQuery moved to M6, deployment to M7, and the onboarding agent (a teammate-driven idea) got its own slot at M8.
+
+## Milestone 5: Session Types + Agent Abstraction — IN PROGRESS
+
+Branch: `m5_akim`. Backend extraction + onboarding stub + frontend type picker shipped.
+
+### What shipped (this branch)
+
+#### Backend
+- **`SessionType` enum** added to `backend/app/models/design_session.py` with values `PART_DESIGN` and `ONBOARDING`. Stored on the existing `design_sessions` table — no rename of the model class (kept `DesignSession` to minimize blast radius; the type column does the polymorphism).
+- **Alembic migration** `b6d58704dee5_add_session_type_to_design_sessions.py` adds the column with `server_default='PART_DESIGN'` so existing rows backfill cleanly. Explicitly creates the Postgres enum type via `Enum.create(...)` since asyncpg doesn't auto-create enum types as a side effect of `add_column`.
+- **`SessionAgent` protocol** in `app/services/agents/base.py` — single `async run_turn(db, session, user, user_content) -> AsyncIterator[AgentEvent]` method. Agents own their event catalog; the dispatcher is type-agnostic.
+- **`PartDesignAgent`** in `app/services/agents/part_design.py` — the M3/M4 orchestrator lifted out of `chat.py` verbatim. Same event catalog (`text_delta` → `spec_parsed` → `generation_started` → `generation_complete` → `message_complete`), same persistence path, same mock-mode placeholder STL.
+- **`OnboardingAgent`** in `app/services/agents/onboarding.py` — stub that streams a placeholder reply ("real onboarding lands in M8") via `text_delta` + `message_complete` only. Intentionally minimal so the frontend's existing `useChat` hook needs no new event handlers. M8 will replace the body with real RAG / checklist behavior; the agent class signature stays.
+- **Registry** in `app/services/agents/registry.py` — hardcoded `SessionType → agent instance` mapping. `get_agent_for_session(session)` is the only entry point; raises loudly if a registered `SessionType` value lacks an agent.
+- **`chat.py` slimmed** to a dispatcher: `prepare_chat_turn()` for preflight (unchanged), `stream_chat_turn()` looks up the agent and forwards its events, wrapping in a try/except that converts unhandled errors to a single `error` event.
+- **Schemas updated**: `DesignSessionCreate` accepts `session_type` (defaults to `PART_DESIGN`). `DesignSessionUpdate` does NOT include `session_type` — it's set-once at creation and immutable thereafter, so PATCH attempts to change it are silently dropped by Pydantic. `DesignSessionResponse` now exposes `session_type`.
+- **Service layer**: `create_session` writes the supplied (or default) `session_type` to the new column.
+
+#### Frontend
+- **`SessionType` type** added to `frontend/src/lib/api.ts` (`"part_design" | "onboarding"`). `DesignSession` interface gains the field. `createSession` now accepts an optional `session_type` argument.
+- **Session form dialog** (`session-form-dialog.tsx`) — when in create mode, shows a session-type picker with friendly descriptions ("Part design — describe a 3D-printable part…", "Onboarding (preview) — placeholder, lands in M8…"). Hidden in edit mode because session_type is immutable. The "Part type" field auto-hides when the user picks `onboarding` (it's only meaningful for `part_design`).
+- **Workspace page** (`/dashboard/labs`) passes `showSessionType={true}` on create, `false` on edit. The PATCH path explicitly drops `session_type` so the frontend mirrors the backend's immutability rule.
+- **Session detail page** (`/dashboard/sessions/[sessionId]`) routes on `session.session_type`:
+  - `part_design` → existing M3/M4 layout (chat panel + artifact list + 3D viewer)
+  - `onboarding` → chat-only full-width layout with a "preview surface" notice card explaining M8 will fill it in
+- Header copy is type-aware ("Part design session" vs "Onboarding session"), and the "No part type set" subtitle is hidden for non-design types.
+
+#### Tests
+- New `backend/tests/test_agents.py` (7 tests):
+  - Registry returns the right agent for each `SessionType`
+  - `session_type` defaults to `part_design` on creation
+  - Creating with `session_type=onboarding` persists and round-trips through `GET`
+  - PATCH cannot change `session_type` (extra field is silently dropped, type stays put)
+  - `part_design` agent emits the full M3 event catalog (regression test for the extraction)
+  - `onboarding` agent emits only `text_delta` + `message_complete`, no spec/generation events, and produces no artifacts
+- All 5 existing chat-API tests still pass unchanged — the extraction was behavior-preserving.
+- Full backend suite: **49 tests passing** (was 42 before M5; +7 new agent tests).
+
+### Build / lint status
+- `npm run lint` clean.
+- `npm run build` is broken on **main** (pre-existing webpack issue with three.js's `OrbitControls.js` import path — confirmed by stashing M5 changes and re-running). Not introduced by M5; needs a separate fix on the frontend, possibly switching to `dev:turbo` or pinning a different three.js version. M5 lint passes and the dev server runs.
+
+### Open work for M5 follow-up
+- Resolve the three.js webpack import path so `npm run build` succeeds on `main`.
+- Write `docs/M5_CONTRACT.md` retroactively — useful as a record of the agent protocol shape and event catalog per session type, even though both agents are on the same branch right now.
+- Onboarding agent's body (RAG, checklists) is M8 — left as a stub on purpose.
+
+### Decisions made (the open questions from the planning entry)
+1. **Renamed `DesignSession`?** No — kept the class name. The `session_type` column does the polymorphism; renaming would have churned ~20 files for cosmetic value.
+2. **`session_type` immutable?** Yes — enforced by leaving it out of `DesignSessionUpdate`.
+3. **`current_spec` → `state`?** No — kept `current_spec`. It's still JSONB; semantics generalize without a rename.
+4. **Registry hardcoded?** Yes.
+5. **Backfill existing rows?** Yes — `server_default='PART_DESIGN'` in the migration handles it.
+
+#### M6 — Real CadQuery Integration (was M5)
+
+Now scoped specifically to the `part_design` agent's generator. Replaces the placeholder STL with real geometry from CadQuery. Everything else (persistence, storage, routes, viewer) is unchanged from M4 — M6 is purely a swap inside one agent's `run_turn`.
+
+- Install CadQuery as a real dep (currently optional)
+- Implement builders for `tube_rack`, `gel_comb`, `tma_mold`
+- Run CadQuery in a thread pool (`asyncio.to_thread`) since it's CPU-bound
+- Real STL + STEP export (M4 ships STL only)
+- Golden-spec integration tests so changes to builders don't silently regress dimensions
+
+#### M7 — Polish + Deployment (was M6)
+
+- Dockerfiles (backend + frontend)
+- docker-compose.yml (backend, frontend, postgres)
+- Object-store storage backend (S3 / R2 / Spaces) plugged in behind `StorageBackend` if multi-instance deploy is on the table; local FS stays as the dev path
+- Managed Postgres migration (Neon / Supabase / RDS)
+- Real LLM enabled (OpenAI provider abstraction is already in place on the `m3_akim` branch — needs to be brought forward)
+- Rate limiting on `/chat`
+- Heartbeat (`:keepalive`) SSE events for long LLM pauses
+- Error handling pass, loading skeletons, toast notifications
+- Security audit (auth bypass, IDOR, path traversal)
+- OpenAPI docs polish
+
+#### M8 — Onboarding Agent (NEW)
+
+Real implementation of the lab onboarding agent stubbed in M5. Targets the pain point of new lab members not knowing where things are, what protocols apply, who owns what.
+
+- System prompt + tool set (likely RAG over lab-uploaded docs, plus structured questions for unstructured contexts)
+- New event catalog for onboarding (e.g., `doc_referenced`, `topic_suggested`, `checklist_step`)
+- Frontend `<OnboardingSessionView>` component
+- Doc upload + indexing pipeline (likely a separate `Document` model, embeddings via OpenAI or similar)
+- Membership-aware: the agent knows about the lab's existing labs/projects/sessions and can point new members at relevant work
+
+This is intentionally vague — the design lands when M5 + M7 are done. Listing it here keeps the seam visible so M5 doesn't accidentally close it off.

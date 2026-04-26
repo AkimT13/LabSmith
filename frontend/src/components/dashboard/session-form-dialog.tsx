@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { SessionStatus } from "@/lib/api";
+import type { SessionStatus, SessionType } from "@/lib/api";
 
 const INPUT_CLASS =
   "h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors focus:border-ring";
@@ -22,8 +22,30 @@ const LABEL_CLASS = "block text-xs font-medium text-muted-foreground";
 
 const STATUS_OPTIONS: SessionStatus[] = ["active", "completed", "archived"];
 
+interface SessionTypeOption {
+  value: SessionType;
+  label: string;
+  description: string;
+}
+
+const SESSION_TYPE_OPTIONS: SessionTypeOption[] = [
+  {
+    value: "part_design",
+    label: "Part design",
+    description:
+      "Describe a 3D-printable lab part in natural language. The agent extracts a spec, validates it, and generates an STL.",
+  },
+  {
+    value: "onboarding",
+    label: "Onboarding (preview)",
+    description:
+      "Help a new lab member get oriented. Real onboarding agent lands in milestone 8 — this is a placeholder for now.",
+  },
+];
+
 export interface SessionFormValues {
   title: string;
+  session_type: SessionType;
   part_type: string;
   status?: SessionStatus;
 }
@@ -34,7 +56,16 @@ interface SessionFormDialogProps {
   title: string;
   description?: string;
   submitLabel: string;
-  initialValues?: { title: string; part_type: string; status?: SessionStatus };
+  initialValues?: {
+    title: string;
+    session_type?: SessionType;
+    part_type: string;
+    status?: SessionStatus;
+  };
+  /** When true, the session-type picker is shown. Hidden in edit mode because
+   * session_type is immutable after creation. */
+  showSessionType?: boolean;
+  /** When true, the status select is shown. Hidden in create mode (always active). */
   showStatus?: boolean;
   onSubmit: (values: SessionFormValues) => Promise<void>;
 }
@@ -46,6 +77,7 @@ export function SessionFormDialog({
   description,
   submitLabel,
   initialValues,
+  showSessionType = false,
   showStatus = false,
   onSubmit,
 }: SessionFormDialogProps) {
@@ -61,6 +93,7 @@ export function SessionFormDialog({
           <SessionFormBody
             submitLabel={submitLabel}
             initialValues={initialValues}
+            showSessionType={showSessionType}
             showStatus={showStatus}
             onSubmit={onSubmit}
             onClose={() => onOpenChange(false)}
@@ -74,21 +107,36 @@ export function SessionFormDialog({
 function SessionFormBody({
   submitLabel,
   initialValues,
+  showSessionType,
   showStatus,
   onSubmit,
   onClose,
 }: {
   submitLabel: string;
-  initialValues?: { title: string; part_type: string; status?: SessionStatus };
+  initialValues?: {
+    title: string;
+    session_type?: SessionType;
+    part_type: string;
+    status?: SessionStatus;
+  };
+  showSessionType: boolean;
   showStatus: boolean;
   onSubmit: (values: SessionFormValues) => Promise<void>;
   onClose: () => void;
 }) {
   const [sessionTitle, setSessionTitle] = useState(initialValues?.title ?? "");
+  const [sessionType, setSessionType] = useState<SessionType>(
+    initialValues?.session_type ?? "part_design",
+  );
   const [partType, setPartType] = useState(initialValues?.part_type ?? "");
   const [status, setStatus] = useState<SessionStatus>(initialValues?.status ?? "active");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Part type only applies to part_design sessions. If the user picks
+  // onboarding the part_type field is irrelevant — hide it instead of
+  // silently dropping the value.
+  const showPartType = sessionType === "part_design";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -98,7 +146,8 @@ function SessionFormBody({
     try {
       await onSubmit({
         title: sessionTitle.trim(),
-        part_type: partType.trim(),
+        session_type: sessionType,
+        part_type: showPartType ? partType.trim() : "",
         status: showStatus ? status : undefined,
       });
       onClose();
@@ -107,6 +156,8 @@ function SessionFormBody({
       setSubmitting(false);
     }
   }
+
+  const activeOption = SESSION_TYPE_OPTIONS.find((opt) => opt.value === sessionType);
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
@@ -124,18 +175,43 @@ function SessionFormBody({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <label className={LABEL_CLASS} htmlFor="session-part-type">
-          Part type
-        </label>
-        <input
-          id="session-part-type"
-          className={INPUT_CLASS}
-          value={partType}
-          onChange={(event) => setPartType(event.target.value)}
-          placeholder="e.g. tube_rack, gel_comb"
-        />
-      </div>
+      {showSessionType && (
+        <div className="space-y-1.5">
+          <label className={LABEL_CLASS} htmlFor="session-type">
+            Session type
+          </label>
+          <select
+            id="session-type"
+            className={SELECT_CLASS}
+            value={sessionType}
+            onChange={(event) => setSessionType(event.target.value as SessionType)}
+          >
+            {SESSION_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {activeOption && (
+            <p className="text-xs text-muted-foreground">{activeOption.description}</p>
+          )}
+        </div>
+      )}
+
+      {showPartType && (
+        <div className="space-y-1.5">
+          <label className={LABEL_CLASS} htmlFor="session-part-type">
+            Part type
+          </label>
+          <input
+            id="session-part-type"
+            className={INPUT_CLASS}
+            value={partType}
+            onChange={(event) => setPartType(event.target.value)}
+            placeholder="e.g. tube_rack, gel_comb"
+          />
+        </div>
+      )}
 
       {showStatus && (
         <div className="space-y-1.5">

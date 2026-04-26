@@ -53,6 +53,7 @@ import {
   type LabRole,
   type Project,
   type SessionStatus,
+  type SessionType,
   type UserProfile,
 } from "@/lib/api";
 import { emitDataChanged, useDataChangedListener } from "@/lib/data-events";
@@ -227,19 +228,27 @@ function LabsWorkspace() {
 
   useDataChangedListener(loadWorkspace);
 
-  useEffect(() => {
-    async function refreshSessions() {
-      try {
-        const token = await getToken();
-        if (!token) return;
-        await loadSessions(token, selectedProjectId);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load sessions");
-      }
+  // Refresh sessions independently. The workspace listener above re-fetches
+  // labs/projects/members but NOT sessions (those are scoped to the currently
+  // selected project, which doesn't change when a new session is created).
+  // Without this listener, a freshly-created session wouldn't appear in the
+  // list until a full page reload.
+  const refreshSessionsForCurrentProject = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      await loadSessions(token, selectedProjectId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sessions");
     }
-
-    refreshSessions();
   }, [getToken, loadSessions, selectedProjectId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
+    refreshSessionsForCurrentProject();
+  }, [refreshSessionsForCurrentProject]);
+
+  useDataChangedListener(refreshSessionsForCurrentProject);
 
   function handleSelectProject(projectId: string) {
     if (!selectedLab) return;
@@ -350,6 +359,7 @@ function LabsWorkspace() {
   // Session actions
   async function handleSubmitSession(values: {
     title: string;
+    session_type: SessionType;
     part_type: string;
     status?: SessionStatus;
   }) {
@@ -360,12 +370,14 @@ function LabsWorkspace() {
       await withToken((token) =>
         createSession(token, selectedProject.id, {
           title: values.title,
+          session_type: values.session_type,
           part_type: values.part_type || null,
         }),
       );
       emitDataChanged();
       router.push(projectWorkspaceHref(selectedLab.id, selectedProject.id));
     } else {
+      // session_type is immutable on the backend — don't send it on PATCH.
       const target = sessionDialog.session;
       await withToken((token) =>
         updateSession(token, target.id, {
@@ -937,17 +949,19 @@ function LabsWorkspace() {
         <SessionFormDialog
           open={Boolean(sessionDialog)}
           onOpenChange={(open) => !open && setSessionDialog(null)}
-          title={sessionDialog.kind === "create" ? "Create design session" : "Edit session"}
+          title={sessionDialog.kind === "create" ? "Create session" : "Edit session"}
           submitLabel={sessionDialog.kind === "create" ? "Create session" : "Save changes"}
           initialValues={
             sessionDialog.kind === "edit"
               ? {
                   title: sessionDialog.session.title,
+                  session_type: sessionDialog.session.session_type,
                   part_type: sessionDialog.session.part_type ?? "",
                   status: sessionDialog.session.status,
                 }
               : undefined
           }
+          showSessionType={sessionDialog.kind === "create"}
           showStatus={sessionDialog.kind === "edit"}
           onSubmit={handleSubmitSession}
         />

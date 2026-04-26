@@ -154,11 +154,15 @@ export default function SessionDetailPage() {
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
-          <p className="text-xs font-medium uppercase text-muted-foreground">Design session</p>
-          <h1 className="text-2xl font-bold tracking-tight">{session.title}</h1>
-          <p className="text-sm text-muted-foreground">
-            {session.part_type ? `Part type: ${session.part_type}` : "No part type set"}
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            {sessionTypeLabel(session.session_type)}
           </p>
+          <h1 className="text-2xl font-bold tracking-tight">{session.title}</h1>
+          {session.session_type === "part_design" && (
+            <p className="text-sm text-muted-foreground">
+              {session.part_type ? `Part type: ${session.part_type}` : "No part type set"}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
@@ -218,25 +222,58 @@ export default function SessionDetailPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
-        <ChatPanel
-          sessionId={session.id}
-          disabled={session.status === "archived"}
-          disabledReason="Archived sessions are read-only."
-          onArtifactGenerated={loadArtifacts}
-        />
-
-        <div className="space-y-4">
-          <ArtifactList
-            artifacts={artifacts}
-            loading={artifactsLoading}
-            error={artifactsError}
-            onRefresh={loadArtifacts}
+      {session.session_type === "part_design" ? (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
+          <ChatPanel
+            sessionId={session.id}
+            disabled={session.status === "archived"}
+            disabledReason="Archived sessions are read-only."
+            onArtifactGenerated={loadArtifacts}
           />
 
-          <ViewerPanel artifact={previewArtifact} loadingArtifacts={artifactsLoading} />
+          <div className="space-y-4">
+            <ArtifactList
+              artifacts={artifacts}
+              loading={artifactsLoading}
+              error={artifactsError}
+              onRefresh={loadArtifacts}
+            />
+
+            <ViewerPanel artifact={previewArtifact} loadingArtifacts={artifactsLoading} />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          {session.session_type === "onboarding" && (
+            <Card className="border-dashed">
+              <CardContent className="py-4">
+                <p className="text-sm text-muted-foreground">
+                  Onboarding sessions are a preview surface today — the full
+                  agent (lab doc retrieval, checklist generation) lands in
+                  milestone 8. The chat below works as a placeholder so you
+                  can take notes and try the flow.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          <ChatPanel
+            sessionId={session.id}
+            disabled={session.status === "archived"}
+            disabledReason="Archived sessions are read-only."
+          />
+        </div>
+      )}
     </div>
   );
+}
+
+function sessionTypeLabel(sessionType: DesignSession["session_type"]): string {
+  switch (sessionType) {
+    case "part_design":
+      return "Part design session";
+    case "onboarding":
+      return "Onboarding session";
+    default:
+      return "Session";
+  }
 }
